@@ -4,7 +4,7 @@ import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
-import { Scene } from './Scene.tsx';
+import { Scene, Swimmer } from './Scene.tsx';
 
 const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
 const REASON_LABEL: Record<string, string> = { finish: '완주', elimination: '말 소진', forfeit: '기권' };
@@ -141,8 +141,11 @@ export function App() {
   const member = user && !user.isAnonymous;
   return (
     <main className="home">
-      <h1 className="logo">뻥다리</h1>
-      <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너요. 들키면 하마 밥이에요.</p>
+      <div className="brand">
+        <Swimmer scale={5} className="mascot" />
+        <h1 className="logo">하마하마</h1>
+      </div>
+      <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너는 1대1 눈치 게임. 들키면 하마 밥이에요.</p>
       <Scene
         length={10}
         pawns={[
@@ -202,6 +205,19 @@ export function App() {
         </p>
       )}
 
+      </section>
+
+      <section className="panel rules">
+        <h2>게임 방법</h2>
+        <ol>
+          <li>주사위를 굴려요. 눈은 나만 볼 수 있어요.</li>
+          <li>
+            1~5 중 하나를 외쳐요. 뻥이어도 돼요. <b className="blankWord">꽝</b>이 나오면 무조건 뻥을 쳐야 해요.
+          </li>
+          <li>상대가 믿으면 외친 만큼 다리를 건너요.</li>
+          <li>상대가 의심하면 주사위를 공개해요. 뻥이었으면 내 말이, 진실이었으면 상대 말이 하마 밥이 돼요.</li>
+          <li>말 5개 중 2개를 먼저 건너보내면 이겨요.</li>
+        </ol>
       </section>
 
       <section className="panel account">

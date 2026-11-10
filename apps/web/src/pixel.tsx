@@ -67,28 +67,36 @@ export function Pawn({ player, scale = 3, className = '' }: { player: number; sc
   );
 }
 
-const HIPPO = { o: '#3b2f52', h: '#a99bcf', d: '#8a7bb6', w: '#ffffff', k: '#1b1210', n: '#5b4c80', e: '#f2a6b6' };
+/** o 외곽선, h 몸, m 주둥이(밝은 색), p 귓속, k 눈, w 눈빛·이빨, n 콧구멍 */
+const HIPPO = { o: '#3a2a33', h: '#8f6f7a', m: '#bfa0a6', p: '#f29bb0', k: '#1b1210', w: '#ffffff', n: '#5e4650' };
 
-/** 하마 위턱: 눈, 귀, 콧구멍. */
+/** 물 위로 내미는 줄 수. 귀, 눈, 콧구멍까지 보이고 그 아래는 물에 잠긴다. */
+export const HIPPO_PEEK_ROWS = 11;
+
+/** 하마 머리(위턱): 분홍 귀, 까만 눈, 밝은 주둥이와 콧구멍. 정면에서 본 모습. */
 const HIPPO_TOP = [
-  '.oo............oo.',
-  'oeeo.ooo..ooo.oeeo',
-  '.oo.owwko.owwko.oo',
-  '.oohhhhhoohhhhhoo.',
-  'ohhhhhhhhhhhhhhhho',
-  'ohhhhhhhhhhhhhhhho',
-  'ohhnnhhhhhhhhnnhho',
-  'ohhhhhhhhhhhhhhhho',
-  '.oooooooooooooooo.',
+  '..ooo............ooo..',
+  '.ohpho.oooooooo.ohpho.',
+  '.ohpphhhhhhhhhhhhppho.',
+  '..ohhhhhhhhhhhhhhhho..',
+  '.ohhhhhhhhhhhhhhhhhho.',
+  '.ohhhkkhhhhhhhhkkhhho.',
+  '.ohhhkwhhhhhhhhkwhhho.',
+  'ohhhhhhhhhhhhhhhhhhhho',
+  'ohmmmmmmmmmmmmmmmmmmho',
+  'ommmmnnmmmmmmmmnnmmmmo',
+  'ommmmmmmmmmmmmmmmmmmmo',
+  'ommmmmmmmmmmmmmmmmmmmo',
+  '.oooooooooooooooooooo.',
 ] as const;
 
 /** 하마 아래턱: 양쪽에 송곳니. */
 const HIPPO_JAW = [
-  'ow.w..........w.wo',
-  'oddddddddddddddddo',
-  'oddddddddddddddddo',
-  '.oddddddddddddddo.',
-  '..oooooooooooooo..',
+  'ow.ww............ww.wo',
+  'ommmmmmmmmmmmmmmmmmmmo',
+  'ommmmmmmmmmmmmmmmmmmmo',
+  '.ommmmmmmmmmmmmmmmmmo.',
+  '..oooooooooooooooooo..',
 ] as const;
 
 /**

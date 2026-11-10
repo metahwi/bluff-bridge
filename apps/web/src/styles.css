@@ -40,7 +40,13 @@ body {
   background-position: 0 0, 16px 16px;
   min-height: 100vh;
 }
-main { max-width: 560px; margin: 0 auto; padding: 16px; display: flex; flex-direction: column; gap: 12px; }
+main { max-width: 560px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 12px; }
+/* 좁은 휴대폰: 여백을 줄여 다리 칸이 말보다 좁아지지 않게 한다 */
+@media (max-width: 380px) {
+  main { padding-left: 10px; padding-right: 10px; }
+  .panel { padding: 14px 12px; }
+  h2 { font-size: 20px; }
+}
 svg { display: block; }
 
 h1, h2 { margin: 0; font-family: Galmuri11, Galmuri14, sans-serif; font-weight: 700; text-wrap: balance; }
@@ -98,9 +104,18 @@ button.soon:disabled { filter: none; opacity: 0.75; border-style: dashed; box-sh
 .notice { padding: 6px 10px; border: 3px solid var(--red-dark); background: #ffe3dc; color: var(--red-dark); }
 
 /* 첫 화면 */
-.home { padding-top: 28px; }
+.home { padding-top: 20px; }
+/* 로고 위로 하마가 고개를 내민다 */
+.brand { display: flex; flex-direction: column; align-items: center; }
+.swimmer.mascot { position: relative; z-index: 0; margin-bottom: -3px; }
+.mascot .ripple { display: none; }
+.rules { align-items: stretch; text-align: left; }
+.rules ol { margin: 0; padding-left: 22px; display: flex; flex-direction: column; gap: 6px; }
+.blankWord { color: var(--red); }
 .logo {
-  font-size: 48px;
+  position: relative;
+  z-index: 1;
+  font-size: 60px;
   line-height: 1;
   text-align: center;
   color: #fff8e7;
@@ -159,11 +174,11 @@ header {
 /* 다리 장면 */
 .scene {
   position: relative;
-  height: 230px;
+  height: 264px;
   overflow: hidden;
   border: 3px solid var(--ink);
   box-shadow: 4px 4px 0 rgb(58 36 20 / 0.35);
-  background: linear-gradient(var(--sky-light) 0 34%, var(--sky) 34% 100%);
+  background: linear-gradient(var(--sky-light) 0 30%, var(--sky) 30% 100%);
 }
 .cloud { position: absolute; height: 9px; background: #fff; box-shadow: 9px -6px 0 #fff, 21px -3px 0 #fff; }
 .cloud.c1 { top: 26px; left: 14%; width: 36px; }
@@ -188,16 +203,23 @@ header {
 .bank .standing { margin-bottom: 0; }
 .standing .pawn + .pawn { margin-left: -10px; }
 
-.river { position: absolute; left: 0; right: 0; top: 150px; bottom: 0; z-index: 1; background: repeating-linear-gradient(var(--water) 0 9px, var(--water-light) 9px 12px, var(--water) 12px 24px); }
-.swimmer { position: absolute; z-index: 1; margin-bottom: 10px; animation: bob 1.6s steps(2) infinite alternate; }
+.river { position: absolute; left: 0; right: 0; top: 150px; bottom: 0; z-index: 1; background: repeating-linear-gradient(var(--water) 0 12px, var(--water-light) 12px 15px, var(--water) 15px 33px); }
+/* 물 위로 머리만 내민 하마. .peek이 물에 잠긴 부분을 잘라 낸다. */
+.swimmer { position: absolute; animation: bob 1.6s steps(2) infinite alternate; }
+.peek { overflow: hidden; }
+.ripple { display: block; height: 3px; margin: 0 -9px; background: repeating-linear-gradient(90deg, #d8f3fb 0 9px, transparent 9px 12px); }
+.ripple::after { content: ''; display: block; height: 3px; margin: 6px 12px 0; background: repeating-linear-gradient(90deg, var(--water-light) 0 6px, transparent 6px 12px); }
 .waves { position: absolute; left: 0; right: 0; bottom: 0; height: 20px; z-index: 4; background: var(--water-deep); }
 .waves::before { content: ''; position: absolute; left: 0; width: calc(100% + 24px); top: -6px; height: 6px; background: repeating-linear-gradient(90deg, var(--water-deep) 0 12px, transparent 12px 24px); animation: drift 1.2s steps(4) infinite; }
 
 /* 하마 */
 .hippo { display: inline-flex; flex-direction: column; align-items: center; }
-.hippo .mouth { position: relative; width: calc(16 * var(--s)); height: 0; background: #e8627a; border-left: var(--s) solid #3b2f52; border-right: var(--s) solid #3b2f52; box-sizing: content-box; box-shadow: inset 0 calc(2 * var(--s)) 0 #a8344f; transition: height 60ms steps(2); overflow: hidden; }
-.hippo .mouth::after { content: ''; position: absolute; left: 22%; right: 22%; bottom: 0; height: 45%; background: #f79aad; }
-.hippo.open .mouth { height: calc(10 * var(--s)); transition: height 220ms steps(4); }
+.hippo .mouth { position: relative; width: calc(20 * var(--s)); height: 0; background: #d94f6a; border-left: var(--s) solid #3a2a33; border-right: var(--s) solid #3a2a33; box-sizing: content-box; box-shadow: inset 0 calc(3 * var(--s)) 0 #8f2740; transition: height 60ms steps(2); overflow: hidden; }
+/* 윗니 두 개 */
+.hippo .mouth::before { content: ''; position: absolute; top: 0; left: calc(2 * var(--s)); width: calc(2 * var(--s)); height: calc(3 * var(--s)); background: #fff; box-shadow: calc(14 * var(--s)) 0 0 #fff; z-index: 1; }
+/* 혀 */
+.hippo .mouth::after { content: ''; position: absolute; left: 20%; right: 20%; bottom: 0; height: 42%; background: #f58ea6; box-shadow: inset 0 var(--s) 0 #ffb3c4; }
+.hippo.open .mouth { height: calc(12 * var(--s)); transition: height 200ms steps(4); }
 
 /* 주사위 */
 .die { width: 48px; height: 48px; padding: 7px; display: grid; grid-template-columns: repeat(3, 1fr); grid-template-rows: repeat(3, 1fr); gap: 3px; background: #fffaf0; border: 3px solid var(--ink); box-shadow: inset -3px -3px 0 #d9c9a0, 0 3px 0 var(--ink); flex: none; }
@@ -218,33 +240,54 @@ header {
 .compare b { font-size: 24px; }
 .victim { min-height: 1.5em; font-weight: 700; color: var(--red-dark); }
 
-.pit { position: relative; width: 100%; height: 230px; overflow: hidden; border: 3px solid var(--ink); background: linear-gradient(var(--sky-light) 0 30%, var(--sky) 30% 62%, var(--water) 62%); }
+/*
+ * 추락 무대. 높이 280px, 물 표면은 위에서 190px.
+ * 하마(크기 5): 머리 65px, 벌린 입 60px, 아래턱 25px.
+ * .pitHippo의 translateY 값이 하마 정수리의 높이다:
+ *   135px = 눈과 콧구멍만 내밀고 기다림 / 55px = 솟아올라 입을 벌림 / 100px = 입을 닫고 물 위에 떠 있음
+ */
+.pit { position: relative; width: 100%; height: 280px; overflow: hidden; border: 3px solid var(--ink); background: linear-gradient(var(--sky-light) 0 70px, var(--sky) 70px 190px, var(--water) 190px); }
 .pitPlank { position: absolute; top: 46px; left: calc(50% - 34px); width: 68px; height: 12px; background: var(--wood); border: 3px solid var(--ink); box-shadow: inset 0 -3px 0 var(--wood-dark); transform-origin: 0 50%; transition: transform 160ms steps(3); }
 .victimPawn { position: absolute; top: 14px; left: calc(50% - 16px); z-index: 3; }
-.pitHippo { position: absolute; left: 50%; bottom: -8px; z-index: 2; transform: translate(-50%, 34px); transition: transform 220ms steps(4); }
+.pitHippo { position: absolute; left: 50%; top: 0; z-index: 2; transform: translate(-50%, 135px); transition: transform 200ms steps(4); }
+/* 물 표면 아래를 가리는 앞쪽 물 */
+.pit .waves { height: 90px; background: var(--water); }
+.pit .waves::before { background: repeating-linear-gradient(90deg, #d8f3fb 0 12px, transparent 12px 24px); top: -3px; height: 3px; }
 
 .reveal.suspense .victimPawn { animation: tremble 0.16s steps(2) infinite; }
 .reveal.fall .pitPlank, .reveal.chomp .pitPlank, .reveal.done .pitPlank { transform: rotate(84deg); }
 .reveal.fall .victimPawn { animation: plunge 0.72s cubic-bezier(0.55, 0, 1, 0.6) forwards; }
-.reveal.fall .pitHippo, .reveal.chomp .pitHippo { transform: translate(-50%, 0); }
-.reveal.done .pitHippo { transform: translate(-50%, 22px); transition-duration: 600ms; }
+.reveal.fall .pitHippo { transform: translate(-50%, 55px); }
+.reveal.chomp .pitHippo { transform: translate(-50%, 100px); transition: transform 60ms steps(2); }
+.reveal.done .pitHippo { transform: translate(-50%, 135px); transition: transform 700ms steps(7); }
 .reveal.chomp { animation: quake 0.45s steps(6); }
 
-.crunch { position: absolute; left: 0; right: 0; top: 78px; z-index: 5; text-align: center; font-family: Galmuri11, sans-serif; font-weight: 700; font-size: 48px; line-height: 1; color: var(--red); text-shadow: 3px 0 0 #fff8e7, -3px 0 0 #fff8e7, 0 3px 0 #fff8e7, 0 -3px 0 #fff8e7, 6px 6px 0 var(--ink); animation: pop 0.3s steps(3); }
-.bone { position: absolute; left: calc(50% - 10px); top: 150px; z-index: 5; animation: spit 0.7s steps(7) forwards; }
-.burp { position: absolute; left: 62%; top: 118px; z-index: 5; padding: 2px 8px; background: #fff8e7; border: 3px solid var(--ink); font-family: Galmuri11, sans-serif; font-size: 12px; animation: pop 0.3s steps(3) 0.35s backwards; }
+.crunch { position: absolute; left: 0; right: 0; top: 34px; z-index: 7; text-align: center; font-family: Galmuri11, sans-serif; font-weight: 700; font-size: 48px; line-height: 1; color: var(--red); text-shadow: 3px 0 0 #fff8e7, -3px 0 0 #fff8e7, 0 3px 0 #fff8e7, 0 -3px 0 #fff8e7, 6px 6px 0 var(--ink); animation: pop 0.3s steps(3); }
+
+/* 피 방울: 입(가운데, 높이 150px)에서 튀어 올랐다가 물로 떨어진다 */
+.blood { position: absolute; left: 50%; top: 150px; z-index: 6; }
+.blood i { position: absolute; left: 0; top: 0; background: #c1121f; box-shadow: inset -3px -3px 0 #7d0a14; animation: spray 0.9s steps(9) forwards; }
+.blood i:nth-child(3n) { background: #e01e37; }
+/* 물에 번지는 피 */
+.bloodPool { position: absolute; left: 50%; top: 187px; z-index: 5; width: 200px; height: 15px; margin-left: -100px; background: repeating-linear-gradient(90deg, #a30f1b 0 12px, #c1121f 12px 21px); box-shadow: 0 9px 0 -3px rgb(163 15 27 / 0.6), 0 18px 0 -6px rgb(163 15 27 / 0.35); transform-origin: 50% 50%; animation: spread 0.9s steps(6) backwards; }
+
+.bone { position: absolute; left: calc(50% - 10px); top: 150px; z-index: 6; animation: spit 0.7s steps(7) forwards; }
+.burp { position: absolute; left: 66%; top: 118px; z-index: 7; padding: 2px 8px; background: #fff8e7; border: 3px solid var(--ink); font-family: Galmuri11, sans-serif; font-size: 12px; animation: pop 0.3s steps(3) 0.35s backwards; }
 
 @keyframes hop { to { transform: translateY(-3px); } }
 @keyframes bob { to { transform: translateY(3px); } }
 @keyframes drift { to { transform: translateX(-24px); } }
 @keyframes shake { 0% { transform: rotate(-7deg); } 100% { transform: rotate(7deg); } }
 @keyframes tremble { 0% { transform: translateX(-1px); } 100% { transform: translateX(2px); } }
-@keyframes plunge { to { transform: translateY(150px) rotate(200deg); } }
+@keyframes plunge { to { transform: translateY(122px) rotate(200deg); } }
+@keyframes spray { 0% { transform: translate(0, 0); } 45% { transform: translate(var(--dx), var(--dy)); } 100% { transform: translate(calc(var(--dx) * 1.3), 36px); opacity: 0; } }
+@keyframes spread { 0% { transform: scaleX(0.1); } 100% { transform: scaleX(1); } }
 @keyframes quake { 0%, 100% { transform: translate(0, 0); } 20% { transform: translate(-6px, 4px); } 40% { transform: translate(6px, -3px); } 60% { transform: translate(-4px, -4px); } 80% { transform: translate(4px, 3px); } }
 @keyframes pop { 0% { transform: scale(0.2); } 70% { transform: scale(1.25); } 100% { transform: scale(1); } }
-@keyframes spit { 0% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(40px, -70px) rotate(180deg); } 100% { transform: translate(78px, 6px) rotate(340deg); } }
+@keyframes spit { 0% { transform: translate(0, 0) rotate(0); } 50% { transform: translate(44px, -80px) rotate(180deg); } 100% { transform: translate(92px, 34px) rotate(340deg); } }
 
 @media (prefers-reduced-motion: reduce) {
   *, *::before, *::after { animation: none !important; transition: none !important; }
-  .reveal.fall .victimPawn { transform: translateY(150px); }
+  .reveal.fall .victimPawn { transform: translateY(122px); }
+  .blood { display: none; }
 }

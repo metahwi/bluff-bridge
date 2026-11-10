@@ -10,6 +10,22 @@ type Challenged = Extract<GameEvent, { type: 'challenged' }>;
 /** 긴장 → 주사위 공개 → 추락(하마가 입을 벌림) → 콰직 → 끝 */
 type RevealStage = 'suspense' | 'reveal' | 'fall' | 'chomp' | 'done';
 
+/** 피 방울: [가로로 튀는 거리, 세로로 튀는 거리(음수 = 위), 크기] (px) */
+const BLOOD: [number, number, number][] = [
+  [-96, -70, 9],
+  [-70, -104, 6],
+  [-40, -124, 9],
+  [-14, -92, 6],
+  [18, -130, 9],
+  [46, -98, 6],
+  [74, -112, 9],
+  [100, -62, 6],
+  [-118, -28, 6],
+  [122, -22, 9],
+  [-56, -46, 12],
+  [60, -40, 12],
+];
+
 const face = (die: number | null) => (die === null ? '?' : die === BLANK ? '꽝' : String(die));
 
 function Countdown({ deadline }: { deadline: number | null }) {
@@ -85,6 +101,17 @@ function Reveal({ event, game, onDone }: { event: Challenged; game: PlayerView; 
           <div className="pitPlank" />
           {!eaten && <Pawn player={event.fallen} scale={4} className="victimPawn" />}
           {stage === 'chomp' && <span className="crunch">콰직!</span>}
+          {eaten && (
+            <>
+              {/* 피: 입에서 사방으로 튀는 방울과 물에 번지는 얼룩 */}
+              <div className="blood">
+                {BLOOD.map(([dx, dy, size], i) => (
+                  <i key={i} style={{ ['--dx' as string]: `${dx}px`, ['--dy' as string]: `${dy}px`, width: size, height: size }} />
+                ))}
+              </div>
+              <div className="bloodPool" />
+            </>
+          )}
           {stage === 'done' && (
             <>
               <Bone className="bone" />
