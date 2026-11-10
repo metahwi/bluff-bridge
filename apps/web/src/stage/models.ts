@@ -24,7 +24,7 @@ function lit<T extends THREE.Mesh>(mesh: T, cast = true): T {
 const sphere = new THREE.SphereGeometry(1, 14, 10);
 const cube = new THREE.BoxGeometry(1, 1, 1);
 
-/** 반지름 r인 공. sx/sy/sz로 눌러 타원체를 만든다. */
+/** 반지름 r인 공. squash로 눌러 타원체를 만든다. */
 export function ball(r: number, color: string, at: [number, number, number], squash: [number, number, number] = [1, 1, 1]) {
   const m = lit(new THREE.Mesh(sphere, toon(color)));
   m.scale.set(r * squash[0], r * squash[1], r * squash[2]);
@@ -36,6 +36,13 @@ export function box(size: [number, number, number], color: string, at: [number, 
   const m = lit(new THREE.Mesh(cube, toon(color)));
   m.scale.set(...size);
   m.position.set(...at);
+  return m;
+}
+
+/** 그림자를 드리우지 않는 납작한 바닥 조각(길, 풀 얼룩). */
+function flat(size: [number, number, number], color: string, at: [number, number, number]) {
+  const m = box(size, color, at);
+  m.castShadow = false;
   return m;
 }
 
@@ -121,19 +128,42 @@ export function makeHippo(): HippoRig {
 
 export const PLAYER_COLORS = ['#f0622d', '#3b82f6', '#a855f7', '#22c55e'];
 
-/** 다리를 건너는 꼬마. 원점은 발바닥. +z를 본다. */
+function shade(color: string, toward: string, amount: number): string {
+  return '#' + new THREE.Color(color).lerp(new THREE.Color(toward), amount).getHexString();
+}
+
+/**
+ * 다리를 건너는 꼬마. 원점은 발바닥, +z를 본다. 키는 약 1.05.
+ * 큰 머리, 흰자와 눈동자, 볼터치, 짧은 팔다리로 귀엽게.
+ */
 export function makePawn(player: number): THREE.Group {
   const color = PLAYER_COLORS[player % PLAYER_COLORS.length]!;
-  const c = new THREE.Color(color);
-  const light = '#' + c.clone().lerp(new THREE.Color('#ffffff'), 0.5).getHexString();
-  const dark = '#' + c.clone().lerp(new THREE.Color('#000000'), 0.35).getHexString();
+  const light = shade(color, '#ffffff', 0.62);
+  const dark = shade(color, '#000000', 0.35);
   const g = new THREE.Group();
-  g.add(ball(0.3, color, [0, 0.38, 0], [1, 1.14, 0.95]));
-  g.add(ball(0.2, light, [0, 0.3, 0.17], [1, 1, 0.55]));
+
+  // 몸과 배
+  g.add(ball(0.27, color, [0, 0.27, 0], [1, 1, 0.92]));
+  g.add(ball(0.17, light, [0, 0.24, 0.15], [1, 1.05, 0.5]));
+  g.add(ball(0.07, light, [0, 0.2, -0.26])); // 꼬리
+  // 머리, 주둥이, 코
+  g.add(ball(0.3, color, [0, 0.66, 0.02], [1.08, 0.95, 1]));
+  g.add(ball(0.15, light, [0, 0.57, 0.24], [1.15, 0.8, 0.6]));
+  g.add(ball(0.04, EYE, [0, 0.61, 0.335]));
+
   for (const s of [-1, 1]) {
-    g.add(ball(0.1, color, [0.2 * s, 0.7, 0]));
-    g.add(ball(0.06, EYE, [0.12 * s, 0.47, 0.26]));
-    g.add(ball(0.09, dark, [0.14 * s, 0.06, 0.06], [1, 0.7, 1.2]));
+    // 귀
+    g.add(ball(0.11, color, [0.23 * s, 0.93, 0]));
+    g.add(ball(0.06, light, [0.23 * s, 0.93, 0.06], [1, 1, 0.5]));
+    // 눈: 흰자 → 눈동자 → 눈빛
+    g.add(ball(0.09, '#ffffff', [0.125 * s, 0.73, 0.245], [1, 1.12, 0.55]));
+    g.add(ball(0.052, EYE, [0.13 * s, 0.725, 0.288], [1, 1.12, 0.6]));
+    g.add(ball(0.02, '#ffffff', [0.112 * s, 0.752, 0.322]));
+    // 볼터치
+    g.add(ball(0.05, '#ff9db0', [0.215 * s, 0.6, 0.215], [1, 0.7, 0.4]));
+    // 팔과 발
+    g.add(ball(0.08, color, [0.27 * s, 0.33, 0.05], [0.8, 1.3, 0.8]));
+    g.add(ball(0.09, dark, [0.12 * s, 0.05, 0.06], [1, 0.6, 1.3]));
   }
   return g;
 }
@@ -142,6 +172,8 @@ export function makePawn(player: number): THREE.Group {
 
 export const BRIDGE_HALF = 5;
 export const BANK_TOP = 1;
+/** 언덕이 바깥으로 뻗는 거리. 넓은 화면에서도 빈 곳이 보이지 않게 넉넉히. */
+const BANK_WIDTH = 11;
 
 /** 다리 바닥의 높이. 밧줄 다리라 가운데가 살짝 처진다. */
 export function deckY(x: number): number {
@@ -237,6 +269,51 @@ function signpost(x: number, z: number) {
   return g;
 }
 
+/** 둥근 지붕 오두막. 문과 둥근 창이 카메라 쪽(+z)을 본다. */
+function hut(x: number, z: number, roof: string, s = 1, yaw = 0) {
+  const g = new THREE.Group();
+  const wall = lit(new THREE.Mesh(new THREE.CylinderGeometry(0.82, 0.88, 0.75, 12), toon('#f0dcae')));
+  wall.position.y = 0.375;
+  g.add(wall);
+  g.add(ball(1.0, roof, [0, 0.72, 0], [1, 0.72, 1]));
+  g.add(ball(0.16, shade(roof, '#000000', 0.3), [0, 1.44, 0], [1, 0.8, 1])); // 지붕 꼭지
+  // 지붕의 줄무늬 한 줄
+  const ring = lit(new THREE.Mesh(new THREE.CylinderGeometry(1.0, 1.02, 0.1, 14), toon(shade(roof, '#ffffff', 0.35))));
+  ring.position.y = 0.74;
+  g.add(ring);
+  g.add(box([0.36, 0.52, 0.1], '#7a4a26', [0, 0.26, 0.84]));
+  g.add(box([0.44, 0.08, 0.12], '#5a3418', [0, 0.55, 0.84]));
+  for (const sx of [-1, 1]) {
+    g.add(ball(0.15, '#5a3418', [0.5 * sx, 0.45, 0.68], [1, 1, 0.4]));
+    g.add(ball(0.1, '#ffe08a', [0.5 * sx, 0.45, 0.72], [1, 1, 0.4])); // 불 켜진 창
+  }
+  g.position.set(x, BANK_TOP, z);
+  g.rotation.y = yaw;
+  g.scale.setScalar(s);
+  return g;
+}
+
+/** z 방향으로 놓인 나무 울타리. */
+function fence(x: number, z0: number, z1: number) {
+  const g = new THREE.Group();
+  const n = Math.max(2, Math.round(Math.abs(z1 - z0) / 0.8) + 1);
+  for (let i = 0; i < n; i++) {
+    const z = z0 + ((z1 - z0) * i) / (n - 1);
+    g.add(box([0.1, 0.5, 0.1], '#8a5527', [x, BANK_TOP + 0.25, z]));
+  }
+  for (const y of [0.18, 0.38]) g.add(box([0.06, 0.07, Math.abs(z1 - z0)], '#c98f4c', [x, BANK_TOP + y, (z0 + z1) / 2]));
+  return g;
+}
+
+function lantern(x: number, z: number) {
+  const g = new THREE.Group();
+  g.add(box([0.08, 0.95, 0.08], '#3a2414', [0, 0.475, 0]));
+  g.add(box([0.22, 0.22, 0.22], '#ffd84d', [0, 1.02, 0]));
+  g.add(box([0.3, 0.07, 0.3], '#3a2414', [0, 1.17, 0]));
+  g.position.set(x, BANK_TOP, z);
+  return g;
+}
+
 /** 결정적인 난수(매번 같은 풍경이 나오게). */
 function seeded(seed: number) {
   let a = seed;
@@ -248,62 +325,82 @@ function seeded(seed: number) {
   };
 }
 
-/** 양쪽 언덕과 그 위의 나무, 덤불, 꽃, 바위, 갈대. */
+/**
+ * 양쪽 언덕과 마을. 왼쪽은 출발 마을, 오른쪽은 도착 마을.
+ * 다리 끝 가까이(|z| < 5, 언덕 안쪽 3칸)는 말들이 줄 서는 자리라 비워 둔다.
+ */
 export function makeBanks() {
   const group = new THREE.Group();
   const rand = seeded(7);
-  const FAR = 14;
+  const FAR = 16;
+  /** 말들이 서는 자리와 길 위에는 장식을 놓지 않는다. */
+  const reserved = (ax: number, z: number) => (ax < BRIDGE_HALF + 3.4 && Math.abs(z) < 5.4) || Math.abs(z) < 1.1;
 
   for (const s of [-1, 1]) {
     // 풀밭 윗면
-    const top = box([8, 0.4, FAR * 2], '#69ad4e', [s * (BRIDGE_HALF + 4), BANK_TOP - 0.2, 0]);
-    top.castShadow = false;
-    group.add(top);
+    group.add(flat([BANK_WIDTH, 0.4, FAR * 2], '#69ad4e', [s * (BRIDGE_HALF + BANK_WIDTH / 2), BANK_TOP - 0.2, 0]));
     // 강 쪽으로 기운 흙 비탈: 위에서 내려다봐도 면이 보여 높이가 느껴진다.
-    const slope = box([1.7, 0.5, FAR * 2], '#b0703c', [s * (BRIDGE_HALF - 0.55), 0.32, 0]);
+    const slope = flat([1.7, 0.5, FAR * 2], '#b0703c', [s * (BRIDGE_HALF - 0.55), 0.32, 0]);
     slope.rotation.z = s * 1.05;
-    slope.castShadow = false;
     group.add(slope);
-    const lip = box([0.34, 0.16, FAR * 2], '#5fa848', [s * (BRIDGE_HALF + 0.1), BANK_TOP - 0.03, 0]);
-    lip.castShadow = false;
-    group.add(lip);
+    group.add(flat([0.34, 0.16, FAR * 2], '#5fa848', [s * (BRIDGE_HALF + 0.1), BANK_TOP - 0.03, 0]));
+    // 다리에서 마을로 이어지는 흙길
+    group.add(flat([BANK_WIDTH - 0.4, 0.03, 1.7], '#c9a36a', [s * (BRIDGE_HALF + BANK_WIDTH / 2 + 0.2), BANK_TOP + 0.012, 0]));
+    group.add(flat([BANK_WIDTH - 0.4, 0.03, 0.12], '#a98452', [s * (BRIDGE_HALF + BANK_WIDTH / 2 + 0.2), BANK_TOP + 0.014, 0.9]));
 
     // 풀밭의 얼룩과 꽃
-    for (let i = 0; i < 26; i++) {
-      const x = s * (BRIDGE_HALF + 0.6 + rand() * 3.2);
-      const z = (rand() - 0.5) * 17;
-      const patch = box([0.5 + rand() * 0.7, 0.02, 0.3 + rand() * 0.5], rand() > 0.5 ? '#5c9d45' : '#7abb5a', [x, BANK_TOP + 0.011, z]);
-      patch.castShadow = false;
-      group.add(patch);
+    for (let i = 0; i < 46; i++) {
+      const ax = BRIDGE_HALF + 0.6 + rand() * (BANK_WIDTH - 1);
+      const z = (rand() - 0.5) * 22;
+      if (Math.abs(z) < 1.1) continue;
+      group.add(flat([0.5 + rand() * 0.7, 0.02, 0.3 + rand() * 0.5], rand() > 0.5 ? '#5c9d45' : '#7abb5a', [s * ax, BANK_TOP + 0.011, z]));
     }
-    for (let i = 0; i < 16; i++) {
-      const x = s * (BRIDGE_HALF + 0.5 + rand() * 3);
-      const z = (rand() - 0.5) * 16;
-      if (Math.abs(z) < 1.6) continue;
+    for (let i = 0; i < 34; i++) {
+      const ax = BRIDGE_HALF + 0.5 + rand() * (BANK_WIDTH - 1);
+      const z = (rand() - 0.5) * 21;
+      if (reserved(ax, z)) continue;
       const color = ['#ffffff', '#ffd84d', '#ff8fb1', '#c9a0ff'][Math.floor(rand() * 4)]!;
-      group.add(box([0.1, 0.12, 0.1], color, [x, BANK_TOP + 0.14, z]));
-      group.add(box([0.04, 0.12, 0.04], '#3b8744', [x, BANK_TOP + 0.06, z]));
+      group.add(box([0.1, 0.12, 0.1], color, [s * ax, BANK_TOP + 0.14, z]));
+      group.add(box([0.04, 0.12, 0.04], '#3b8744', [s * ax, BANK_TOP + 0.06, z]));
     }
     // 물가의 바위와 갈대
-    for (let i = 0; i < 7; i++) {
-      const z = (rand() - 0.5) * 16;
+    for (let i = 0; i < 8; i++) {
+      const z = (rand() - 0.5) * 18;
       if (Math.abs(z) < 1.5) continue;
       group.add(rock(s * (BRIDGE_HALF - 0.85 - rand() * 0.25), 0.05, z, 0.16 + rand() * 0.16));
       for (let k = 0; k < 3; k++) {
-        const reed = box([0.05, 0.5 + rand() * 0.4, 0.05], '#3f8f48', [s * (BRIDGE_HALF - 0.75 - rand() * 0.3), 0.25, z + 0.5 + rand() * 0.6]);
-        group.add(reed);
+        group.add(box([0.05, 0.5 + rand() * 0.4, 0.05], '#3f8f48', [s * (BRIDGE_HALF - 0.75 - rand() * 0.3), 0.25, z + 0.5 + rand() * 0.6]));
       }
     }
+    // 길가의 등불
+    group.add(lantern(s * (BRIDGE_HALF + 4.2), -1.25), lantern(s * (BRIDGE_HALF + 8.2), 1.25));
   }
 
-  group.add(tree(-6.5, -4.6, 1.15), tree(-8.2, -1.8, 0.95), tree(-6.9, 5.6, 1), tree(-8.4, 3.2, 1.2));
-  group.add(tree(6.7, -5.4, 1.2), tree(8.3, -2.4, 1), tree(8.0, 2.6, 1.1), tree(6.4, 6.0, 0.95));
-  group.add(bush(-5.9, -2.6), bush(-7.4, 2.0, '#6cc45a'), bush(6.0, -2.8, '#6cc45a'), bush(7.2, 4.4), bush(5.8, 3.4, '#3b8744'));
-  group.add(rock(-7.6, BANK_TOP + 0.12, -3.4, 0.3), rock(7.4, BANK_TOP + 0.1, -0.4, 0.26));
+  // 출발 마을(왼쪽)
+  group.add(hut(-10.2, -3.4, '#e0803a', 1.25, 0.25), hut(-12.8, 2.9, '#3a9a8f', 1.4, 0.4), hut(-9.6, 5.9, '#d9a03a', 1.05, 0.2), hut(-13.6, -5.4, '#8a5fd0', 1.2, 0.3));
+  group.add(fence(-8.75, -6.6, -1.4), fence(-8.75, 1.4, 4.6));
+  group.add(tree(-11.9, -1.9, 1.1), tree(-11.2, 6.9, 1.2), tree(-8.9, -7.6, 1.15), tree(-14.6, 0.6, 1.25), tree(-6.4, -8.4, 1), tree(-6.3, 7.4, 1.05));
+  group.add(bush(-9.2, 1.9), bush(-11.6, 4.4, '#6cc45a'), bush(-10.9, -6.2, '#3b8744'), rock(-9.4, BANK_TOP + 0.12, -1.6, 0.3));
 
-  const signs = [signpost(-6.6, -1.5), signpost(6.6, -1.5)];
+  // 도착 마을(오른쪽)
+  group.add(hut(10.0, -3.6, '#8a5fd0', 1.3, -0.3), hut(12.6, 3.1, '#e0803a', 1.4, -0.4), hut(9.4, 6.1, '#3a9a8f', 1.05, -0.2), hut(13.7, -5.2, '#d9a03a', 1.2, -0.3));
+  group.add(fence(8.75, -6.6, -1.4), fence(8.75, 1.4, 4.6));
+  group.add(tree(11.8, -1.7, 1.1), tree(11.4, 7.0, 1.2), tree(8.8, -7.8, 1.15), tree(14.8, 0.4, 1.25), tree(6.4, -8.6, 1), tree(6.5, 7.6, 1.05));
+  group.add(bush(9.3, 1.9, '#6cc45a'), bush(11.7, 4.6), bush(11.0, -6.4, '#3b8744'), rock(9.5, BANK_TOP + 0.1, -1.5, 0.26));
+
+  // 표지판은 길 안쪽에 세운다(다리 가까이는 말들이 줄 서는 자리)
+  const signs = [signpost(-8.1, -1.3), signpost(8.1, -1.3)];
   group.add(...signs);
   return { group, signs };
+}
+
+/** 팀이 모여 서는 자리를 알리는 깃발. */
+export function makeFlag(player: number): THREE.Group {
+  const g = new THREE.Group();
+  g.add(box([0.07, 1.25, 0.07], '#5a3418', [0, 0.625, 0]));
+  g.add(box([0.5, 0.32, 0.05], PLAYER_COLORS[player % PLAYER_COLORS.length]!, [0.27, 1.06, 0]));
+  g.add(ball(0.07, '#ffd84d', [0, 1.28, 0]));
+  return g;
 }
 
 /** 물 위에 뜬 연잎. */

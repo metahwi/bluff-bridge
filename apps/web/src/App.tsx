@@ -157,7 +157,6 @@ export function App() {
     <main className="home">
       <SoundControl floating />
       <h1 className="logo">하마하마</h1>
-      <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너는 1대1 눈치 게임. 들키면 하마 밥이에요.</p>
       <StageView state={HERO} />
 
       <section className="panel form">

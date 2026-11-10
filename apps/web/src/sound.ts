@@ -3,6 +3,8 @@
 
 export type Sfx =
   | 'hop'
+  | 'step'
+  | 'kick'
   | 'roll'
   | 'throw'
   | 'dice'
@@ -228,6 +230,18 @@ class Sound {
         break;
       case 'roll':
         for (let i = 0; i < 6; i++) this.hiss(ctx, out, t + i * 0.055 + Math.random() * 0.02, 0.035, 0.35, 'bandpass', 1800 + Math.random() * 2600);
+        break;
+      case 'step':
+        // 나무 널빤지를 밟는 소리: 낮은 통 + 살짝 삐걱
+        this.tone(ctx, out, 'triangle', 190 + Math.random() * 50, t, 0.09, 0.55, 95);
+        this.hiss(ctx, out, t, 0.03, 0.35, 'bandpass', 1100 + Math.random() * 500);
+        this.tone(ctx, out, 'sawtooth', 620 + Math.random() * 180, t + 0.03, 0.06, 0.05, 480);
+        break;
+      case 'kick':
+        // 뻥!
+        this.tone(ctx, out, 'sine', 210, t, 0.2, 0.9, 48);
+        this.hiss(ctx, out, t, 0.06, 0.8, 'lowpass', 2200);
+        this.tone(ctx, out, 'square', 900, t + 0.02, 0.07, 0.15, 300);
         break;
       case 'throw':
         this.tone(ctx, out, 'sine', 300, t, 0.22, 0.3, 1100);

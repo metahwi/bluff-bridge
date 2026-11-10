@@ -1,7 +1,7 @@
-﻿// 게임판을 그리는 3D 무대. React와 무관하게 동작하고, StageView.tsx가 이 클래스를 감싼다.
+// 게임판을 그리는 3D 무대. React와 무관하게 동작하고, StageView.tsx가 이 클래스를 감싼다.
 // 장면을 낮은 해상도로 그린 뒤 확대해서 픽셀 아트처럼 보이게 한다.
 import * as THREE from 'three';
-import { BANK_TOP, BRIDGE_HALF, deckY, makeBanks, makeBone, makeBridge, makeHippo, makeLilies, makePawn, plankX } from './models.ts';
+import { BANK_TOP, BRIDGE_HALF, deckY, makeBanks, makeBone, makeBridge, makeFlag, makeHippo, makeLilies, makePawn, plankX } from './models.ts';
 import type { HippoRig } from './models.ts';
 import { MAX_RIPPLES, makeWater } from './water.ts';
 import { DiceHud } from './dice.ts';
@@ -26,7 +26,7 @@ export interface ChompInfo {
 }
 
 /** 추락 연출의 단계. 화면 위 글자(HTML)를 바꾸는 데 쓴다. */
-export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'chomp' | 'chew' | 'burp' | 'done';
+export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'kick' | 'chomp' | 'chew' | 'burp' | 'done';
 
 export interface StageLabel {
   key: string;
@@ -77,35 +77,43 @@ const easeIn = (k: number) => k * k * k;
 const easeInOut = (k: number) => (k < 0.5 ? 4 * k * k * k : 1 - (-2 * k + 2) ** 3 / 2);
 const lerp = (a: number, b: number, k: number) => a + (b - a) * k;
 
-/** 화면에 가로로 보이는 범위의 절반(세계 단위). 다리 10칸과 양쪽 언덕이 들어온다. */
-const HALF_WIDTH = 8.3;
+/**
+ * 화면에 가로로 보이는 범위의 절반(세계 단위).
+ * 좁은 화면(휴대폰)에서는 다리와 그 양옆만, 넓은 화면에서는 마을까지 보이게 화면 비율에 따라 정한다.
+ */
+const HALF_WIDTH_MIN = 8.3;
+const HALF_WIDTH_MAX = 11.2;
+const halfWidthFor = (aspect: number) => Math.min(HALF_WIDTH_MAX, Math.max(HALF_WIDTH_MIN, 6.6 * aspect));
 const CAMERA_ELEVATION = (40 * Math.PI) / 180;
 /** 카메라를 살짝 옆으로 돌려 물체의 옆면이 보이게 한다. */
 const CAMERA_YAW = -0.13;
 /** 가로 시야각의 절반. 좁게 잡아 원근이 과하지 않게 한다. */
 const HALF_FOV = (13 * Math.PI) / 180;
-const CAMERA_DISTANCE = HALF_WIDTH / Math.tan(HALF_FOV);
 const VIEW: View = { x: 0, y: 0.5, z: 0.7, zoom: 1 };
 /** 햇빛 방향. 왼쪽 뒤 위에서 비춰 그림자가 카메라 쪽 오른쪽으로 떨어진다. */
 const SUN = new THREE.Vector3(-6, 12, -3.4);
 
 /** 강에 떠 있는 하마들의 자리: [x, z, 크기]. 다리에 가려지는 곳은 비워 둔다. */
 const HERD: [number, number, number][] = [
+  // 다리 바로 밑의 세 마리: 머리 위로 지나가는 말을 올려다보다가, 떨어지면 가장 가까운 녀석이 문다
+  [-3.0, 1.5, 1.0],
+  [0.1, 1.62, 1.05],
+  [3.0, 1.45, 0.95],
   // 다리 뒤쪽(먼 곳)
-  [-2.4, -5.6, 0.95],
-  [2.4, -4.6, 1.0],
-  // 다리 바로 밑: 머리 위로 지나가는 말을 올려다본다
-  [-1.3, 1.5, 1.0],
-  [2.3, 1.35, 0.95],
+  [-2.2, -5.2, 0.95],
+  [2.4, -4.4, 1.0],
   // 앞쪽(가까운 곳)
-  [-3.0, 4.3, 1.05],
-  [0.6, 5.3, 1.1],
-  [3.2, 4.1, 1.0],
+  [-1.9, 5.0, 1.05],
+  [2.6, 4.7, 1.0],
 ];
+/** 다리 밑 하마인지(자리의 z로 판단). */
+const isUnderBridge = (home: THREE.Vector3) => Math.abs(home.z - 1.5) < 0.8;
 
 const PARTICLES = 220;
-/** 다리 위 말의 크기. 널빤지 한 칸(폭 1)에 꽉 차게. */
-const PAWN_SIZE = 1.5;
+/** 다리 위 말의 크기. 4인이 같은 칸에 서도 들어가도록 작게. */
+const PAWN_SIZE = 1.15;
+/** 언덕에서 기다리거나 도착한 말의 크기. */
+const CROWD_SIZE = 0.8;
 /** 추락 연출에서 하마가 솟구치는 자리(다리 앞쪽). 다리에 가려지지 않아야 한다. */
 const LUNGE_Z = 1.5;
 
@@ -113,7 +121,7 @@ export class Stage {
   onPhase: (phase: ChompPhase) => void = () => {};
   onLabels: (labels: StageLabel[]) => void = () => {};
   /** 장면 속 움직임에 맞춰 낼 효과음. */
-  onSfx: (name: 'hop' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
+  onSfx: (name: 'hop' | 'step' | 'kick' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
   private dice = new DiceHud();
 
   private renderer: THREE.WebGLRenderer;
@@ -145,6 +153,8 @@ export class Stage {
   private freeze = 0;
   private shake = 0;
   private paused = false;
+  /** 카메라와 장면 사이의 거리. 화면 비율에 따라 resize에서 정한다. */
+  private distance = HALF_WIDTH_MIN / Math.tan(HALF_FOV);
   private view: View = { ...VIEW };
   private yawnAt = 4;
   private raf = 0;
@@ -168,10 +178,10 @@ export class Stage {
     sun.castShadow = true;
     sun.shadow.mapSize.set(2048, 2048);
     const sc = sun.shadow.camera;
-    sc.left = -13;
-    sc.right = 13;
-    sc.top = 13;
-    sc.bottom = -13;
+    sc.left = -18;
+    sc.right = 18;
+    sc.top = 16;
+    sc.bottom = -16;
     sc.near = 1;
     sc.far = 40;
     sun.shadow.bias = -0.002;
@@ -228,6 +238,7 @@ export class Stage {
     // 가로로 보이는 범위를 고정하고, 세로 시야각을 화면 비율에 맞춘다.
     this.camera.aspect = w / h;
     this.camera.fov = (2 * Math.atan(Math.tan(HALF_FOV) * (h / w)) * 180) / Math.PI;
+    this.distance = halfWidthFor(w / h) / Math.tan(HALF_FOV);
     this.dice.resize(w / h);
     this.placeCamera(0, 0);
     this.emitLabels();
@@ -235,10 +246,10 @@ export class Stage {
 
   private placeCamera(sx: number, sy: number): void {
     const target = new THREE.Vector3(this.view.x + sx, this.view.y + sy, this.view.z);
-    const flat = Math.cos(CAMERA_ELEVATION) * CAMERA_DISTANCE;
+    const flat = Math.cos(CAMERA_ELEVATION) * this.distance;
     this.camera.position.set(
       target.x + Math.sin(CAMERA_YAW) * flat,
-      target.y + Math.sin(CAMERA_ELEVATION) * CAMERA_DISTANCE,
+      target.y + Math.sin(CAMERA_ELEVATION) * this.distance,
       target.z + Math.cos(CAMERA_YAW) * flat,
     );
     this.camera.lookAt(target);
@@ -376,7 +387,7 @@ export class Stage {
           const dx = watched.group.position.x - root.position.x;
           const dz = watched.group.position.z - root.position.z;
           // 다리 밑 하마는 바로 위의 말을 고개 들어 올려다본다
-          if (Math.abs(h.home.z - 1.4) < 0.8 && Math.abs(dx) < 1.6) lookUp = 0.4 * (1 - Math.abs(dx) / 1.6);
+          if (isUnderBridge(h.home) && Math.abs(dx) < 1.6) lookUp = 0.4 * (1 - Math.abs(dx) / 1.6);
           want = THREE.MathUtils.clamp(Math.atan2(dx, dz), -1.1, 1.1);
           if (dz < 0) want = THREE.MathUtils.clamp(dx * 0.12, -0.5, 0.5); // 다리 앞쪽 하마는 카메라를 본 채 살짝만
         }
@@ -404,7 +415,8 @@ export class Stage {
   // ───────── 말 ─────────
 
   private spot(player: number, pos: number, length: number): THREE.Vector3 {
-    const lane = (player - (this.pawns.length - 1) / 2) * 0.62; // 같은 칸에 서도 겹치지 않게
+    // 같은 칸에 서도 겹치지 않게 앞뒤로 벌려 세운다(널빤지 깊이 1.7 안에서)
+    const lane = (player - (this.pawns.length - 1) / 2) * Math.min(0.9, 1.3 / Math.max(1, this.pawns.length - 1));
     if (pos <= 0) return new THREE.Vector3(-BRIDGE_HALF - 0.75, BANK_TOP, lane);
     if (pos > length) return new THREE.Vector3(BRIDGE_HALF + 0.75, BANK_TOP, lane);
     const x = plankX(pos, length);
@@ -413,6 +425,8 @@ export class Stage {
 
   private hop(p: Pawn, from: THREE.Vector3, to: THREE.Vector3, delay: number, dur: number): void {
     this.at(delay, () => this.onSfx('hop'));
+    // 다리 널빤지에 내려앉으면 나무 소리
+    if (Math.abs(to.x) < BRIDGE_HALF) this.at(delay + dur, () => this.onSfx('step'));
     this.tween(delay, dur, (k) => {
       p.group.position.lerpVectors(from, to, k);
       p.group.position.y += Math.sin(k * Math.PI) * 0.55;
@@ -494,29 +508,37 @@ export class Stage {
     if (first || prev?.length !== next.length) this.emitLabels();
   }
 
-  /** 언덕 위에 줄지어 선 말들: 왼쪽은 대기 중, 오른쪽은 완주. */
+  /**
+   * 팀이 줄 서는 자리. side -1 = 출발 쪽(대기), +1 = 도착 쪽(완주).
+   * 팀 0·2는 길 뒤쪽(z < 0), 팀 1·3은 앞쪽(z > 0)에 세 마리씩 줄을 선다. 다리에 가까운 자리부터 채운다.
+   */
+  private campSpot(player: number, index: number, side: -1 | 1): THREE.Vector3 {
+    const dir = player % 2 === 0 ? -1 : 1;
+    const zBase = dir * (1.75 + Math.floor(player / 2) * 1.75);
+    return new THREE.Vector3(side * (BRIDGE_HALF + 0.7 + (index % 3) * 0.66), BANK_TOP, zBase + dir * Math.floor(index / 3) * 0.7);
+  }
+
+  /** 언덕 위에 줄지어 선 말들과 팀 깃발. 먹히거나 출발하면 그만큼 줄어든다. */
   private buildCrowd(s: StageState): void {
     const key = JSON.stringify(s.crowd);
     if (key === this.crowdKey) return;
     this.crowdKey = key;
     this.crowdGroup.clear();
-    let waiting = 0;
-    let done = 0;
     s.crowd.forEach((c, player) => {
-      for (let i = 0; i < c.reserve; i++, waiting++) {
-        const m = makePawn(player);
-        m.scale.setScalar(1.1);
-        m.position.set(-BRIDGE_HALF - 0.8 - (waiting % 3) * 0.8, BANK_TOP, 2.0 + Math.floor(waiting / 3) * 0.95);
-        m.rotation.y = 0.6;
-        this.crowdGroup.add(m);
-      }
-      for (let i = 0; i < c.finished; i++, done++) {
-        const m = makePawn(player);
-        m.scale.setScalar(1.1);
-        m.position.set(BRIDGE_HALF + 0.8 + (done % 3) * 0.8, BANK_TOP, 2.0 + Math.floor(done / 3) * 0.95);
-        m.rotation.y = -0.4;
-        m.userData.happy = true;
-        this.crowdGroup.add(m);
+      for (const side of [-1, 1] as const) {
+        const count = side === -1 ? c.reserve : c.finished;
+        for (let i = 0; i < count; i++) {
+          const m = makePawn(player);
+          m.scale.setScalar(CROWD_SIZE);
+          m.position.copy(this.campSpot(player, i, side));
+          m.rotation.y = side === -1 ? 0.8 : -0.5;
+          m.userData.happy = side === 1; // 완주한 말은 신나서 뛴다
+          this.crowdGroup.add(m);
+        }
+        const flag = makeFlag(player);
+        const at = this.campSpot(player, 2, side);
+        flag.position.set(at.x + side * 0.6, BANK_TOP, at.z + (player % 2 === 0 ? -0.35 : 0.35));
+        this.crowdGroup.add(flag);
       }
     });
   }
@@ -573,9 +595,11 @@ export class Stage {
   }
 
   /**
-   * 뻥이 걸렸을 때(또는 의심이 틀렸을 때)의 장면.
-   * 카메라가 다가간다 → 널빤지가 앞으로 꺼지며 말이 튕겨 나간다 → 다리 앞에서 하마가 솟구쳐 문다
-   * → 씹는다 → 뼈를 뱉는다. 끝나면 그동안 밀려 있던 최신 상태를 반영한다.
+   * 뻥이 걸렸을 때(또는 의심이 틀렸을 때)의 장면. 말이 어디 있었느냐에 따라 두 가지다.
+   *  - 다리 위: 널빤지가 앞으로 꺼지며 말이 난간 너머로 튕겨 나간다.
+   *  - 출발 지점(육지): 상대 팀 말이 달려와 뻥 차서 강으로 날려 보낸다.
+   * 어느 쪽이든 다리 밑 세 마리 중 가장 가까운 하마가 헤엄쳐 와 솟구쳐 물고, 씹고, 뼈를 뱉는다.
+   * 끝나면 그동안 밀려 있던 최신 상태를 반영한다.
    */
   playChomp(info: ChompInfo): Promise<void> {
     const state = this.state;
@@ -598,12 +622,12 @@ export class Stage {
     this.bone.visible = false;
     const other = info.other !== null ? this.pawns[info.other] : undefined;
 
-    // 언덕 위에 있던 말은 첫 널빤지로 끌려 나온다
-    const plankNo = Math.min(victim.pos && victim.pos >= 1 ? victim.pos : 1, state.length);
+    const onLand = !victim.pos || victim.pos < 1;
+    const plankNo = onLand ? 0 : Math.min(victim.pos!, state.length);
     const stand = this.spot(info.fallen, plankNo, state.length);
     victim.moving = true;
     victim.group.visible = true;
-    if (victim.pos !== plankNo) this.hop(victim, victim.group.position.clone(), stand, 0.1, 0.3);
+    victim.group.position.copy(stand);
 
     const X = stand.x;
     /** 하마가 솟구치는 가로 위치. 언덕에 파묻히지 않게 강 안쪽으로 당긴다. */
@@ -613,63 +637,109 @@ export class Stage {
     const focus = other && other.pos !== null ? (X + other.base.x) / 2 : X;
 
     // 1. 긴장: 두 말이 떨고 카메라가 다가간다
-    this.moveCamera(0, 0.8, { x: focus * 0.8, y: 0.5, z: 1.0, zoom: 1.4 });
+    this.moveCamera(0, 0.8, { x: THREE.MathUtils.clamp(focus * 0.8, -4, 4), y: 0.5, z: 1.0, zoom: 1.4 });
     this.tween(0.45, 1.5, () => {
       const j = Math.sin(this.time * 70) * 0.03;
       victim.group.position.x = X + j;
       if (other && !other.moving && other.pos !== null) other.group.position.x = other.base.x - j;
     });
 
-    // 가장 가까운 하마가 물속으로 사라졌다가, 말 바로 앞 물에서 눈만 내밀고 기다린다
-    const hippo = [...this.hippos].sort((a, b) => a.home.distanceTo(mouth) - b.home.distanceTo(mouth))[0]!;
+    // 다리 밑 하마 중 가장 가까운 녀석이 물속으로 사라졌다가, 말 바로 앞 물에서 눈만 내밀고 기다린다
+    const under = this.hippos.filter((h) => isUnderBridge(h.home));
+    const hippo = [...(under.length ? under : this.hippos)].sort((a, b) => Math.abs(a.home.x - HX) - Math.abs(b.home.x - HX))[0]!;
     hippo.acting = true;
     const hr = hippo.rig.root;
     const peekY = -0.32 * hippo.scale;
-    const diveFrom = hr.position.y;
-    this.tween(0.15, 0.5, (k) => (hr.position.y = lerp(diveFrom, -2.4, k)), easeIn);
-    this.at(0.75, () => {
-      hr.position.set(HX, -2.4, LUNGE_Z);
+    const from = hr.position.clone();
+    this.tween(0.15, 0.45, (k) => (hr.position.y = lerp(from.y, -2.4, k)), easeIn);
+    this.tween(0.6, 0.3, (k) => {
+      // 물 밑으로 헤엄쳐 온다
+      hr.position.x = lerp(from.x, HX, k);
+      hr.position.z = lerp(from.z, LUNGE_Z, k);
       hr.rotation.set(0, 0, 0);
       hippo.yaw = 0;
-    });
+    }, easeInOut);
     this.tween(0.9, 0.55, (k) => (hr.position.y = lerp(-2.4, peekY, k)), easeOut);
-
-    // 주변 하마들은 자리를 비켜 준다
-    const crowding = this.hippos.filter((h) => h !== hippo && Math.hypot(h.home.x - HX, h.home.z - (LUNGE_Z + 1)) < 2.7);
-    for (const h of crowding) {
-      h.acting = true;
-      const y0 = h.rig.root.position.y;
-      this.tween(0.1, 0.5, (k) => (h.rig.root.position.y = lerp(y0, -2.6, k)), easeIn);
-    }
 
     // 2. 공개
     this.at(1.15, () => this.onPhase('reveal'));
-    this.moveCamera(1.2, 0.55, { x: HX * 0.9, y: 0.45, z: 1.5, zoom: 1.65 });
+    this.moveCamera(1.2, 0.55, { x: HX * 0.9 + (onLand ? -0.9 : 0), y: 0.45, z: 1.5, zoom: onLand ? 1.5 : 1.65 });
 
-    // 3. 널빤지가 앞으로 꺼지고 말이 난간 너머로 튕겨 나간다
-    const plank = this.planks[plankNo - 1]!;
     const T = 2.05;
-    this.at(T, () => this.onPhase('fall'));
-    this.tween(T, 0.18, (k) => (plank.rotation.x = k * 1.15), easeIn);
-    this.tween(T + 0.02, 0.5, (k) => {
-      victim.group.position.set(lerp(X, HX, k), lerp(stand.y, mouth.y, k) + Math.sin(k * Math.PI) * 1.05, lerp(stand.z, mouth.z, k));
-      victim.group.rotation.set(k * 7, 0.35, k * 2.5);
+    /** 말이 공중에 떠 있는 시간. 육지에서 차이면 더 멀리 날아간다. */
+    const flight = onLand ? 0.66 : 0.52;
+    let kicker: THREE.Group | null = null;
+
+    if (onLand) {
+      // 3-가. 상대 팀 말이 뒤에서 달려와 뻥 찬다
+      const rival = info.other ?? (info.fallen + 1) % Math.max(2, this.pawns.length);
+      const body = makePawn(rival);
+      body.scale.setScalar(PAWN_SIZE);
+      kicker = new THREE.Group();
+      kicker.add(body);
+      kicker.rotation.y = Math.PI / 2; // 강 쪽을 본다
+      this.scene.add(kicker);
+      const k0 = new THREE.Vector3(X - 3.0, BANK_TOP, stand.z);
+      const k1 = new THREE.Vector3(X - 0.75, BANK_TOP, stand.z);
+      kicker.position.copy(k0);
+      const k = kicker;
+      // 도움닫기 세 걸음
+      for (let n = 0; n < 3; n++) {
+        const a = k0.clone().lerp(k1, n / 3);
+        const b = k0.clone().lerp(k1, (n + 1) / 3);
+        this.at(T - 0.55 + n * 0.17, () => this.onSfx('hop'));
+        this.tween(T - 0.55 + n * 0.17, 0.17, (q) => {
+          k.position.lerpVectors(a, b, q);
+          k.position.y += Math.sin(q * Math.PI) * 0.35;
+        });
+      }
+      this.at(T, () => {
+        this.onPhase('kick');
+        this.onSfx('kick');
+        this.shake = 0.35;
+      });
+      // 발을 내지르며 몸이 앞으로 쏠렸다가 돌아온다
+      this.tween(T - 0.04, 0.12, (q) => {
+        k.position.x = k1.x + 0.45 * q;
+        k.rotation.z = -0.5 * q;
+      }, easeOut);
+      this.tween(T + 0.1, 0.25, (q) => {
+        k.position.x = k1.x + 0.45 * (1 - q);
+        k.rotation.z = -0.5 * (1 - q);
+      });
+      // 찬 뒤에 좋아서 폴짝폴짝
+      for (let n = 0; n < 4; n++) {
+        this.tween(T + 0.5 + n * 0.3, 0.3, (q) => (k.position.y = BANK_TOP + Math.sin(q * Math.PI) * 0.4));
+      }
+    } else {
+      // 3-나. 널빤지가 앞으로 꺼지고 말이 난간 너머로 튕겨 나간다
+      const plank = this.planks[plankNo - 1]!;
+      this.at(T, () => this.onPhase('fall'));
+      this.tween(T, 0.18, (k) => (plank.rotation.x = k * 1.15), easeIn);
+      this.tween(T + 3.6, 0.3, (k) => (plank.rotation.x = 1.15 * (1 - k)), easeOut);
+    }
+
+    // 말이 포물선을 그리며 하마 입으로
+    this.tween(T + 0.02, flight - 0.02, (k) => {
+      const arc = Math.sin(k * Math.PI) * (onLand ? 2.4 : 1.05);
+      victim.group.position.set(lerp(X, HX, k), lerp(stand.y, mouth.y, k) + arc, lerp(stand.z, mouth.z, k));
+      victim.group.rotation.set(k * 7, 0.35, k * (onLand ? 9 : 2.5));
       victim.group.scale.setScalar(1);
     });
 
     // 하마가 물을 가르며 솟구쳐 입을 쩍 벌린다
-    this.at(T + 0.2, () => {
+    const C = T + flight;
+    this.at(C - 0.32, () => {
       this.onSfx('splash');
       this.burst(new THREE.Vector3(HX, 0.1, LUNGE_Z + 0.4), 38, ['#ffffff', '#d2f4fb', '#8fd6e6'], 3.4, 7, 0.17);
     });
-    this.tween(T + 0.2, 0.3, (k) => {
+    this.tween(C - 0.32, 0.3, (k) => {
       hr.position.y = lerp(peekY, 0.55, k);
       hr.rotation.x = -0.75 * k;
       hippo.open = k;
     }, easeOut);
 
     // 4. 콰직: 턱이 닫히고, 순간 멈추고, 화면이 흔들리고, 피가 튄다
-    const C = T + 0.52;
     this.at(C, () => {
       this.onPhase('chomp');
       hippo.open = 0;
@@ -687,7 +757,7 @@ export class Stage {
     }, easeIn);
     this.at(C + 0.52, () => {
       this.onSfx('splash');
-      this.burst(new THREE.Vector3(HX,0.1, LUNGE_Z + 0.6), 28, ['#ffffff', '#d2f4fb', '#e8a0a8'], 3.6, 5, 0.15);
+      this.burst(new THREE.Vector3(HX, 0.1, LUNGE_Z + 0.6), 28, ['#ffffff', '#d2f4fb', '#e8a0a8'], 3.6, 5, 0.15);
       this.shake = 0.35;
     });
     this.moveCamera(C + 0.3, 0.5, { x: HX * 0.9, y: 0.3, z: 1.9, zoom: 1.8 });
@@ -700,7 +770,7 @@ export class Stage {
       this.tween(W + n * 0.34 + 0.17, 0.09, (k) => (hippo.open = 0.32 * (1 - k)), easeIn);
       this.at(W + n * 0.34 + 0.26, () => {
         this.onSfx('munch');
-        this.burst(new THREE.Vector3(HX,0.3, LUNGE_Z + 0.95), 10, ['#c1121f', '#e01e37'], 1.7, 3.2, 0.12);
+        this.burst(new THREE.Vector3(HX, 0.3, LUNGE_Z + 0.95), 10, ['#c1121f', '#e01e37'], 1.7, 3.2, 0.12);
         this.shake = 0.16;
       });
     }
@@ -724,13 +794,12 @@ export class Stage {
     // 7. 제자리로
     const E = B + 1.1;
     this.moveCamera(E, 0.6, { ...VIEW });
-    this.tween(E, 0.3, (k) => (plank.rotation.x = 1.15 * (1 - k)), easeOut);
 
     return new Promise((resolve) => {
       this.at(E + 0.65, () => {
         hippo.acting = false;
-        hippo.home.set(HX, -0.2 * hippo.scale, LUNGE_Z + 0.9); // 먹은 자리에 눌러앉는다
-        for (const h of crowding) h.acting = false; // 비켰던 하마들이 다시 떠오른다
+        hippo.home.x = HX; // 먹은 자리 근처에 눌러앉는다(다리 밑은 그대로)
+        if (kicker) this.scene.remove(kicker);
         victim.group.rotation.set(0, 0.35, 0);
         victim.moving = false;
         this.busy = false;

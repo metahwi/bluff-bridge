@@ -13,7 +13,7 @@ const browser = await chromium.launch({ args: ['--use-angle=swiftshader', '--ena
 for (const t of times) {
   const page = await browser.newPage({ viewport: { width, height }, deviceScaleFactor: 1 });
   page.on('pageerror', (e) => console.log('pageerror:', e.message));
-  await page.goto(`http://localhost:5173/?stage=chomp&at=${t}`, { waitUntil: 'networkidle' });
+  await page.goto(`http://localhost:5173/?stage=${process.argv[4] ?? 'chomp'}&at=${t}`, { waitUntil: 'networkidle' });
   await page.evaluate(() => document.fonts.ready);
   await page.waitForTimeout(1500);
   await page.screenshot({ path: `${outDir}f-${t}.png`, clip: { x: 0, y: 0, width, height: Math.min(height, 760) } });

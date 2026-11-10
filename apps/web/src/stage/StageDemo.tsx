@@ -27,19 +27,28 @@ export function StageDemo({ mode }: { mode: string }) {
     setCue({ id: Date.now(), fallen: 0, other: 1, claim: 5, die: 2, truth: false, victimName: '에이' });
     setState(AFTER);
   }
+  /** 출발 지점(육지)에 있던 말이 먹히는 경우: 상대 말이 걷어찬다. */
+  function kick() {
+    setState({ ...BEFORE, pawns: [0, 7] });
+    setTimeout(() => {
+      setCue({ id: Date.now(), fallen: 0, other: 1, claim: 3, die: 3, truth: true, victimName: '에이' });
+      setState(AFTER);
+    }, 100);
+  }
   const land = (face: number | null) => setState((s) => ({ ...s, dice: { mode: 'shown', face } }));
   const reset = () => setState(BEFORE);
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
     const timers: ReturnType<typeof setTimeout>[] = [];
-    if (mode === 'chomp') {
-      // ?stage=chomp&at=2.4 → 연출 시작 2.4초 뒤의 장면에서 멈춘다(스크린샷용)
+    if (mode === 'chomp' || mode === 'kick') {
+      // ?stage=chomp&at=2.4 → 연출 시작 2.4초 뒤의 장면에서 멈춘다(스크린샷용). ?stage=kick 은 육지에서 차이는 경우.
       const at = Number(query.get('at'));
       timers.push(
         setTimeout(() => {
-          chomp();
-          if (at > 0) setTimeout(() => (window as unknown as { __stage?: { debugSeek(s: number): void } }).__stage?.debugSeek(at), 60);
+          if (mode === 'kick') kick();
+          else chomp();
+          if (at > 0) setTimeout(() => (window as unknown as { __stage?: { debugSeek(s: number): void } }).__stage?.debugSeek(at), 220);
         }, 600),
       );
     }
@@ -81,6 +90,9 @@ export function StageDemo({ mode }: { mode: string }) {
             </button>
             <button className="ghost small" onClick={chomp}>
               추락 연출
+            </button>
+            <button className="ghost small" onClick={kick}>
+              걷어차기 연출
             </button>
           </div>
         </section>

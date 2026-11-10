@@ -71,7 +71,7 @@ export function StageView({
         sound.duck(true);
         sound.play('suspense');
       } else if (p === 'reveal') sound.play(truth.current ? 'truth' : 'lie');
-      else if (p === 'fall') sound.play('whoosh');
+      else if (p === 'fall' || p === 'kick') sound.play('whoosh');
       else if (p === 'chomp') sound.play('crunch');
       else if (p === 'burp') setTimeout(() => sound.play('burp'), 300);
       else if (p === 'done') sound.duck(false);
@@ -129,6 +129,7 @@ export function StageView({
               {!shown ? '진실일까?' : cue.truth ? '진실!' : '뻥이야!'}
             </strong>
           </div>
+          {phase === 'kick' && <span className="sfx sfxKick">뻥!</span>}
           {phase === 'chomp' && <span className="sfx sfxCrunch">콰직!</span>}
           {phase === 'chew' && <span className="sfx sfxMunch">우적우적</span>}
           {phase === 'burp' && <span className="sfxBurp">꺼억</span>}
