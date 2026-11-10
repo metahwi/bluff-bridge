@@ -20,11 +20,14 @@ export interface Rules {
  * 봇 시뮬레이션(scripts/sim.ts) 결과를 보고 정한 값.
  * 완주 3번이 목표일 때 말이 5개면 네 판 중 세 판이 아무도 3번을 못 채우고 끝난다(말이 먼저 떨어짐).
  * 말 7개면 그 비율이 셋 중 하나로 내려가고 한 판이 평균 26턴쯤 된다.
+ *
+ * 주사위는 여섯 면 중 둘이 꽝(1/3)이라 뻥을 쳐야 하는 일이 잦다. 숫자가 4까지뿐이라
+ * 다리가 10칸이면 판이 늘어지고 절반이 말 소진으로 끝나서(scripts/dice-sim.ts), 다리를 8칸으로 맞췄다.
  */
 export const RULES: Rules = {
-  bridgeLength: 10,
-  dieFaces: [1, 2, 3, 4, 5, BLANK],
-  maxClaim: 5,
+  bridgeLength: 8,
+  dieFaces: [1, 2, 3, 4, BLANK, BLANK],
+  maxClaim: 4,
   runners: 7,
   finishesToWin: 3,
   minPlayers: 2,

@@ -157,10 +157,10 @@ function autoplay(cl: Client) {
     else if (g.phase === 'claim') {
       // 두 번에 한 번은 5라고 뻥친다.
       const lie = g.die === BLANK || claims++ % 2 === 0;
-      send(cl, { t: 'act', action: { type: 'claim', value: lie ? 5 : g.die! } });
+      send(cl, { t: 'act', action: { type: 'claim', value: lie ? g.rules.maxClaim : g.die! } });
     } else {
       // 5라는 선언은 두 번에 한 번 의심한다 (첫 번째는 반드시).
-      const doubt = g.claim === 5 && fives++ % 2 === 0;
+      const doubt = g.claim === g.rules.maxClaim && fives++ % 2 === 0;
       if (doubt) challenges++;
       send(cl, { t: 'act', action: { type: doubt ? 'challenge' : 'accept' } });
     }

@@ -31,6 +31,9 @@ function toRespond(state: GameState, face: number, claim: number): GameState {
 
 /** 시작할 때 출발 지점에 한 개를 올리고 남는 대기 말 수. */
 const RESERVE = RULES.runners - 1;
+/** 선언할 수 있는 가장 큰 숫자와 다리 길이. 규칙 숫자를 바꿔도 테스트가 따라가게 한다. */
+const MAX = RULES.maxClaim;
+const LEN = RULES.bridgeLength;
 
 describe('시작', () => {
   it('각자 말 하나를 출발 지점에 올리고 나머지는 대기', () => {
@@ -62,7 +65,7 @@ describe('차례와 단계 검증', () => {
 
   it('범위를 벗어난 선언은 거부', () => {
     const s = play(createGame(['a', 'b']), 0, { type: 'roll' }, 3).state;
-    for (const value of [0, 6, 2.5, NaN]) {
+    for (const value of [0, MAX + 1, 2.5, NaN]) {
       expect(() => play(s, 0, { type: 'claim', value })).toThrow(GameError);
     }
   });
@@ -77,18 +80,18 @@ describe('차례와 단계 검증', () => {
 
 describe('믿기', () => {
   it('거짓말이어도 선언한 만큼 전진하고 차례가 넘어간다', () => {
-    const s = play(toRespond(createGame(['a', 'b']), BLANK, 5), 1, { type: 'accept' }).state;
-    expect(s.players[0]!.pos).toBe(5);
+    const s = play(toRespond(createGame(['a', 'b']), BLANK, MAX), 1, { type: 'accept' }).state;
+    expect(s.players[0]!.pos).toBe(MAX);
     expect([s.phase, s.turn, s.responder, s.die, s.claim]).toEqual(['roll', 1, 0, null, null]);
   });
 });
 
 describe('의심하기', () => {
   it('거짓말이면 굴린 사람의 말이 추락하고 이동은 없다', () => {
-    const { state, events } = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'challenge' });
+    const { state, events } = play(toRespond(createGame(['a', 'b']), 2, MAX), 1, { type: 'challenge' });
     expect(state.players[0]).toMatchObject({ pos: 0, reserve: RESERVE - 1, lost: 1 });
     expect(state.players[1]).toMatchObject({ pos: 0, reserve: RESERVE, lost: 0 });
-    expect(events[0]).toMatchObject({ type: 'challenged', die: 2, claim: 5, truth: false, fallen: 0 });
+    expect(events[0]).toMatchObject({ type: 'challenged', die: 2, claim: MAX, truth: false, fallen: 0 });
   });
 
   it('진실이면 의심한 사람의 말이 추락하고 굴린 사람은 전진', () => {
@@ -109,7 +112,7 @@ describe('의심하기', () => {
 describe('완주와 승패', () => {
   it('다리 끝을 넘으면 완주하고 다음 말이 출발', () => {
     const s0 = createGame(['a', 'b']);
-    s0.players[0]!.pos = 8;
+    s0.players[0]!.pos = LEN - 1;
     const { state, events } = play(toRespond(s0, 3, 3), 1, { type: 'accept' });
     expect(state.players[0]).toMatchObject({ finished: 1, pos: 0, reserve: RESERVE - 1 });
     expect(events.some((e) => e.type === 'finished')).toBe(true);
@@ -117,14 +120,14 @@ describe('완주와 승패', () => {
 
   it('마지막 칸에 정확히 서면 아직 완주가 아니다', () => {
     const s0 = createGame(['a', 'b']);
-    s0.players[0]!.pos = 8;
+    s0.players[0]!.pos = LEN - 2;
     const s = play(toRespond(s0, 2, 2), 1, { type: 'accept' }).state;
-    expect(s.players[0]).toMatchObject({ finished: 0, pos: 10 });
+    expect(s.players[0]).toMatchObject({ finished: 0, pos: LEN });
   });
 
   it('정해진 수만큼 완주하면 승리', () => {
     const s0 = createGame(['a', 'b']);
-    Object.assign(s0.players[0]!, { pos: 9, finished: RULES.finishesToWin - 1 });
+    Object.assign(s0.players[0]!, { pos: LEN - 1,finished: RULES.finishesToWin - 1 });
     const { state, events } = play(toRespond(s0, 2, 2), 1, { type: 'accept' });
     expect([state.phase, state.winner]).toEqual(['over', 0]);
     expect(events.at(-1)).toEqual({ type: 'over', winner: 0 });
@@ -134,7 +137,7 @@ describe('완주와 승패', () => {
   it('말을 모두 잃으면 탈락하고 남은 한 명이 승리', () => {
     const s0 = createGame(['a', 'b']);
     Object.assign(s0.players[0]!, { reserve: 0 });
-    const { state } = play(toRespond(s0, 1, 5), 1, { type: 'challenge' });
+    const { state } = play(toRespond(s0, 1, MAX), 1, { type: 'challenge' });
     expect(state.players[0]).toMatchObject({ out: true, pos: null });
     expect([state.phase, state.winner]).toEqual(['over', 1]);
   });
@@ -143,7 +146,7 @@ describe('완주와 승패', () => {
 describe('말이 떨어졌을 때의 승패', () => {
   it('완주가 더 많으면 말을 다 써도 이긴다', () => {
     const s0 = createGame(['a', 'b']);
-    Object.assign(s0.players[0]!, { pos: 9, reserve: 0 });
+    Object.assign(s0.players[0]!, { pos: LEN - 1,reserve: 0 });
     // a가 마지막 말로 1개 완주 → 말 소진. b는 완주 0개.
     const { state } = play(toRespond(s0, 2, 2), 1, { type: 'accept' });
     expect(state.players[0]).toMatchObject({ finished: 1, out: true });
@@ -152,7 +155,7 @@ describe('말이 떨어졌을 때의 승패', () => {
 
   it('둘 다 말이 떨어지고 완주 수가 같으면 굴린 사람이 이긴다', () => {
     const s0 = createGame(['a', 'b']);
-    Object.assign(s0.players[0]!, { pos: 9, reserve: 0 });
+    Object.assign(s0.players[0]!, { pos: LEN - 1,reserve: 0 });
     Object.assign(s0.players[1]!, { reserve: 0, finished: 1 });
     // b가 a의 진실을 의심 → b 추락·소진, a는 완주하며 소진. 완주 1:1.
     const { state } = play(toRespond(s0, 2, 2), 1, { type: 'challenge' });
@@ -200,7 +203,7 @@ describe('기권', () => {
 describe('정보 은닉', () => {
   it('주사위 눈은 굴린 본인에게만 보인다', () => {
     const rolled = play(createGame(['a', 'b']), 0, { type: 'roll' }, 4);
-    const claimed = play(rolled.state, 0, { type: 'claim', value: 5 }).state;
+    const claimed = play(rolled.state, 0, { type: 'claim', value: MAX }).state;
     for (const s of [rolled.state, claimed]) {
       expect(viewFor(s, 0).die).toBe(4);
       expect(viewFor(s, 1).die).toBeNull();
@@ -216,7 +219,7 @@ describe('정보 은닉', () => {
   });
 
   it('의심으로 공개된 주사위는 모두에게 보인다', () => {
-    const { events } = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'challenge' });
+    const { events } = play(toRespond(createGame(['a', 'b']), 2, MAX), 1, { type: 'challenge' });
     expect(viewEvent(events[0]!, null)).toMatchObject({ die: 2 });
   });
 });
@@ -224,7 +227,7 @@ describe('정보 은닉', () => {
 describe('판 기록과 점수', () => {
   it('뻥, 안 들킨 뻥, 의심 성공을 센다', () => {
     // a가 2를 굴려 5라고 뻥 → b가 믿음
-    let s = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'accept' }).state;
+    let s = play(toRespond(createGame(['a', 'b']), 2, MAX), 1, { type: 'accept' }).state;
     expect(s.stats[0]).toMatchObject({ bluffs: 1, bluffsPassed: 1 });
     // b가 꽝을 굴려 3이라고 뻥 → a가 의심해서 맞힘
     s = play(toRespond(s, BLANK, 3), 0, { type: 'challenge' }).state;
@@ -237,7 +240,7 @@ describe('판 기록과 점수', () => {
   });
 
   it('뻥 횟수는 판이 끝나기 전에는 누구에게도 보이지 않는다', () => {
-    const s = toRespond(createGame(['a', 'b']), 2, 5);
+    const s = toRespond(createGame(['a', 'b']), 2, MAX);
     expect(viewFor(s, 0).stats).toBeNull();
     expect(viewFor(s, 1).stats).toBeNull();
     expect(JSON.stringify(viewFor(s, 1))).not.toContain('bluffs');
@@ -255,7 +258,7 @@ describe('판 기록과 점수', () => {
   it('기록이 없던 예전 판도 이어서 둘 수 있다', () => {
     const old = createGame(['a', 'b']) as Partial<GameState> & GameState;
     delete (old as Partial<GameState>).stats;
-    const s = play(toRespond(old, 2, 5), 1, { type: 'accept' }).state;
+    const s = play(toRespond(old, 2, MAX), 1, { type: 'accept' }).state;
     expect(s.stats[0]).toMatchObject({ bluffs: 1, bluffsPassed: 1 });
   });
 });

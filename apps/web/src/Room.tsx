@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { BLANK } from '@bluff-bridge/engine';
+import { BLANK, RULES } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
@@ -261,7 +261,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const stageKey = JSON.stringify(
     game && room?.status !== 'lobby'
       ? [game.rules.bridgeLength, game.players.map((p) => [p.pos, p.reserve, p.finished]), playing ? game.turn : null, dice]
-      : [10, (room?.seats ?? []).map(() => [0, 0, 0]), null, dice],
+      : [RULES.bridgeLength, (room?.seats ?? []).map(() => [0, 0, 0]), null, dice],
   );
   const stageState = useMemo<StageState>(() => {
     const [length, players, active, d] = JSON.parse(stageKey) as [number, [number | null, number, number][], number | null, DiceState];

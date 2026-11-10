@@ -23,6 +23,8 @@ export interface ChompInfo {
   fallen: number;
   /** 같이 긴장하는 상대(의심한 사람 또는 굴린 사람). */
   other: number | null;
+  /** 장면을 고르는 데 쓰는 번호. 같은 판을 보는 사람끼리 같은 값이어야 같은 장면이 나온다. */
+  seed?: number;
 }
 
 /** 추락 연출의 단계. 화면 위 글자(HTML)를 바꾸는 데 쓴다. */
@@ -687,7 +689,13 @@ export class Stage {
      *  다리: 언제나 발밑 널빤지가 꺼져 그 자리에서 떨어진다(plank). 밧줄과 발차기는 육지의 말에게만 쓴다.
      */
     const rivalPos = other?.pos ?? null;
-    const variant: 'kick' | 'rope' | 'plank' = !onLand ? 'plank' : rivalPos !== null && rivalPos >= 3 ? 'rope' : 'kick';
+    // 육지에서는 두 장면을 섞는다. 올가미는 상대 말이 다리 위에 있어야 던질 수 있다.
+    // 멀리(3칸 이상) 있으면 주로 올가미, 가까이 있으면 주로 발차기이고, 세 번에 한 번은 반대쪽이 나온다.
+    // 두 사람 화면에 같은 장면이 나오도록 무작위 대신 연출 번호(seed)로 정한다.
+    const canRope = rivalPos !== null && rivalPos >= 1;
+    const swap = (info.seed ?? 0) % 3 === 0;
+    const preferRope = rivalPos !== null && rivalPos >= 3;
+    const variant: 'kick' | 'rope' | 'plank' = !onLand ? 'plank' : canRope && preferRope !== swap ? 'rope' : 'kick';
     /** 말이 공중에 떠 있는 시간과 포물선의 높이. */
     const flight = { kick: 0.66, rope: 0.72, plank: 0.52 }[variant];
     const arcHeight = { kick: 2.4, rope: 1.25, plank: 1.05 }[variant];

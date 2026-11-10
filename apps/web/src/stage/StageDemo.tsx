@@ -14,7 +14,7 @@ import type { ChompCue, StageControls } from './StageView.tsx';
 import type { StageState } from './Stage.ts';
 
 const BASE: StageState = {
-  length: 10,
+  length: 8,
   pawns: [4, 7],
   crowd: [
     { reserve: 5, finished: 1 },
@@ -50,7 +50,7 @@ export function StageDemo({ mode }: { mode: string }) {
     const [a, b] = SCENES[name] ?? SCENES.chomp!;
     setState({ ...BASE, pawns: [a, b] });
     setTimeout(() => {
-      setCue({ id: Date.now(), fallen: 0, other: 1, claim: 5, die: 2, truth: false, victimName: '에이' });
+      setCue({ id: Date.now(), fallen: 0, other: 1, claim: 4, die: 2, truth: false, victimName: '에이' });
       setState({ ...BASE, pawns: [0, b], crowd: [{ reserve: 4, finished: 1 }, BASE.crowd[1]!], active: 1 });
     }, 100);
   }

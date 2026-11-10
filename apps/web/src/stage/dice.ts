@@ -52,15 +52,14 @@ function faceTexture(face: number | null): THREE.CanvasTexture {
   return t;
 }
 
-/** 상자의 면 순서(+X, -X, +Y, -Y, +Z, -Z)에 놓인 눈. */
-const LAYOUT = [2, 5, 1, 0, 3, 4];
+/** 상자의 면 순서(+X, -X, +Y, -Y, +Z, -Z)에 놓인 눈. 규칙의 주사위와 같다: 1, 2, 3, 4, 꽝, 꽝. */
+const LAYOUT = [2, 0, 1, 0, 3, 4];
 
-/** 그 눈이 위(+Y)를 보게 하는 회전. */
+/** 그 눈이 위(+Y)를 보게 하는 회전. 꽝은 두 면 중 아랫면(-Y)을 위로 올린다. */
 function faceUp(face: number): THREE.Quaternion {
   const e = new THREE.Euler();
   const q = Math.PI / 2;
   if (face === 2) e.z = q;
-  else if (face === 5) e.z = -q;
   else if (face === 3) e.x = -q;
   else if (face === 4) e.x = q;
   else if (face === 0) e.x = Math.PI;

@@ -12,8 +12,8 @@ import type { StageState } from './stage/Stage.ts';
 
 /** 첫 화면에 보여 줄 게임 한 장면. */
 const HERO: StageState = {
-  length: 10,
-  pawns: [3, 7],
+  length: RULES.bridgeLength,
+  pawns: [3, 6],
   crowd: [
     { reserve: 4, finished: 1 },
     { reserve: 5, finished: 0 },
@@ -221,9 +221,9 @@ export function App() {
       <section className="panel rules">
         <h2>게임 방법</h2>
         <ol>
-          <li>주사위를 굴려요. 눈은 나만 볼 수 있어요.</li>
+          <li>주사위를 던져요. 눈은 나만 볼 수 있어요. 여섯 면 중 둘은 꽝이에요.</li>
           <li>
-            1~5 중 하나를 외쳐요. 뻥이어도 돼요. <b className="blankWord">꽝</b>이 나오면 무조건 뻥을 쳐야 해요.
+            1~{RULES.maxClaim} 중 하나를 외쳐요. 뻥이어도 돼요. <b className="blankWord">꽝</b>이 나오면 무조건 뻥을 쳐야 해요.
           </li>
           <li>상대가 믿으면 외친 만큼 다리를 건너요.</li>
           <li>상대가 의심하면 주사위를 공개해요. 뻥이었으면 내 말이, 진실이었으면 상대 말이 하마 밥이 돼요.</li>

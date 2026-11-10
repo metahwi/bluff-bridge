@@ -63,7 +63,7 @@ for (let turn = 0; turn < 8; turn++) {
     await shot(roller, 'rolled-mine');
     await shot(other, 'rolled-theirs');
   }
-  await button(roller, '5').click();
+  await button(roller, '4').click();
   if (turn < 2) {
     await button(other, '믿기').click();
     await a.waitForTimeout(1300);
