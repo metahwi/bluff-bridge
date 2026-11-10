@@ -1,7 +1,11 @@
 import { useEffect, useState } from 'react';
 import { NAME_MAX, ROOM_CODE } from '@bluff-bridge/protocol/types';
-import { loadName, saveName } from './identity.ts';
+import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
+import type { Me } from './auth.ts';
 import { Room } from './Room.tsx';
+
+const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
+const REASON_LABEL: Record<string, string> = { finish: '완주', elimination: '말 소진', forfeit: '기권' };
 
 function codeFromPath(): string {
   const m = location.pathname.match(/^\/r\/([^/]+)/);
@@ -9,10 +13,35 @@ function codeFromPath(): string {
   return ROOM_CODE.test(code) ? code : '';
 }
 
+function Records({ me }: { me: Me }) {
+  const r = me.records;
+  if (!r || r.played === 0) return null;
+  return (
+    <section className="records">
+      <h2>
+        전적 {r.played}전 {r.won}승 {r.played - r.won}패
+      </h2>
+      <ul>
+        {r.recent.map((m, i) => (
+          <li key={i}>
+            <b className={m.won ? 'win' : 'loss'}>{m.won ? '승' : '패'}</b>
+            <span>vs {m.opponents || '?'}</span>
+            <small>
+              {m.rounds}턴 · {REASON_LABEL[m.reason] ?? m.reason} · {new Date(m.endedAt).toLocaleDateString('ko-KR')}
+            </small>
+          </li>
+        ))}
+      </ul>
+    </section>
+  );
+}
+
 export function App() {
+  const { me, error: loadError, reload } = useMe();
   const [code, setCode] = useState(codeFromPath);
-  const [name, setName] = useState(loadName);
-  const [draft, setDraft] = useState(name);
+  /** 닉네임을 확인하고 방에 들어가기로 했는지. 로그인된 사람은 초대 링크로 바로 들어간다. */
+  const [entered, setEntered] = useState(false);
+  const [draft, setDraft] = useState('');
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
@@ -23,47 +52,72 @@ export function App() {
     return () => removeEventListener('popstate', onPop);
   }, []);
 
+  // 저장된 닉네임을 입력란에 채운다.
+  const savedName = me?.user && me.user.name !== '손님' ? me.user.name : '';
+  useEffect(() => {
+    if (savedName) setDraft((d) => d || savedName);
+  }, [savedName]);
+
   function go(next: string) {
     history.pushState(null, '', next ? `/r/${next}` : '/');
     setCode(next);
     setError('');
-  }
-
-  function commitName(): string {
-    const n = draft.trim().slice(0, NAME_MAX);
-    if (n) {
-      saveName(n);
-      setName(n);
+    if (!next) {
+      setEntered(false);
+      void reload(); // 방에서 나오면 전적을 새로 불러온다.
     }
-    return n;
   }
 
-  async function createRoom() {
-    if (!commitName()) return;
+  /** 닉네임을 확정하고(필요하면 게스트 계정을 만들고) 다음 동작을 한다. */
+  async function withName(next: () => Promise<void> | void) {
+    const name = draft.trim().slice(0, NAME_MAX);
+    if (!name) return setError('닉네임을 먼저 입력해 주세요.');
     setBusy(true);
     setError('');
     try {
-      const res = await fetch('/api/rooms', { method: 'POST' });
-      const body = (await res.json()) as { code?: string; error?: string };
-      if (!res.ok || !body.code) throw new Error(body.error ?? '방을 만들지 못했어요.');
-      go(body.code);
+      await ensureGuest(me, name);
+      await reload();
+      await next();
     } catch (e) {
-      setError(e instanceof Error ? e.message : '방을 만들지 못했어요.');
+      setError(e instanceof Error ? e.message : '문제가 생겼어요. 다시 시도해 주세요.');
     } finally {
       setBusy(false);
     }
   }
 
+  const createRoom = () =>
+    withName(async () => {
+      const res = await fetch('/api/rooms', { method: 'POST' });
+      const body = (await res.json()) as { code?: string; error?: string };
+      if (!res.ok || !body.code) throw new Error(body.error ?? '방을 만들지 못했어요.');
+      setEntered(true);
+      go(body.code);
+    });
+
   function joinRoom() {
     const raw = invite.trim();
     const target = (raw.match(/\/r\/([^/?#]+)/)?.[1] ?? raw).toUpperCase();
     if (!ROOM_CODE.test(target)) return setError('초대 링크나 방 코드를 확인해 주세요.');
-    if (!commitName()) return setError('닉네임을 먼저 입력해 주세요.');
-    go(target);
+    void withName(() => {
+      setEntered(true);
+      go(target);
+    });
   }
 
-  if (code && name) return <Room code={code} name={name} onExit={() => go('')} />;
+  async function logout() {
+    await authClient.signOut();
+    setDraft('');
+    await reload();
+  }
 
+  if (!me) return <main className="home">{loadError || '불러오는 중…'}</main>;
+
+  const user = me.user;
+  if (code && user && (entered || savedName)) {
+    return <Room code={code} userId={user.id} onExit={() => go('')} />;
+  }
+
+  const member = user && !user.isAnonymous;
   return (
     <main className="home">
       <h1>뻥다리</h1>
@@ -80,8 +134,8 @@ export function App() {
 
       {code ? (
         <>
-          <button disabled={!draft.trim()} onClick={commitName}>
-            방 {code} 입장
+          <button disabled={busy || !draft.trim()} onClick={() => withName(() => setEntered(true))}>
+            {busy ? '들어가는 중…' : `방 ${code} 입장`}
           </button>
           <button className="ghost" onClick={() => go('')}>
             처음으로
@@ -101,7 +155,7 @@ export function App() {
               onChange={(e) => setInvite(e.target.value)}
               onKeyDown={(e) => e.key === 'Enter' && joinRoom()}
             />
-            <button className="ghost" disabled={!invite.trim()} onClick={joinRoom}>
+            <button className="ghost" disabled={busy || !invite.trim()} onClick={joinRoom}>
               입장
             </button>
           </div>
@@ -112,6 +166,35 @@ export function App() {
           {error}
         </p>
       )}
+
+      <section className="account">
+        {member ? (
+          <div className="row">
+            <span>{user.name} 님으로 로그인됨</span>
+            <button className="ghost" onClick={logout}>
+              로그아웃
+            </button>
+          </div>
+        ) : me.providers.length > 0 ? (
+          <>
+            <small>
+              로그인하면 다른 기기에서도 전적이 유지돼요.
+              {user ? ' 지금까지의 전적도 그대로 옮겨져요.' : ''}
+            </small>
+            <div className="row">
+              {me.providers.map((p) => (
+                <button key={p} className="ghost" onClick={() => socialLogin(p)}>
+                  {PROVIDER_LABEL[p] ?? p}
+                </button>
+              ))}
+            </div>
+          </>
+        ) : (
+          <small>지금은 게스트로 플레이해요. 전적은 이 브라우저에 연결돼요.</small>
+        )}
+      </section>
+
+      <Records me={me} />
     </main>
   );
 }

@@ -1,6 +1,5 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { ClientMessage, RoomView, ServerMessage } from '@bluff-bridge/protocol/types';
-import { playerId } from './identity.ts';
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'closed';
 
@@ -16,7 +15,8 @@ export interface RoomState {
   send: (msg: ClientMessage) => void;
 }
 
-export function useRoom(code: string, name: string): RoomState {
+/** userId는 계정이 바뀌면 다시 접속하기 위한 값이다. 누구인지는 서버가 로그인 쿠키로 확인한다. */
+export function useRoom(code: string, userId: string): RoomState {
   const [room, setRoom] = useState<RoomView | null>(null);
   const [deadline, setDeadline] = useState<number | null>(null);
   const [conn, setConn] = useState<Connection>('connecting');
@@ -32,9 +32,7 @@ export function useRoom(code: string, name: string): RoomState {
 
     const open = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const ws = new WebSocket(
-        `${proto}://${location.host}/ws/room/${code}?pid=${playerId}&name=${encodeURIComponent(name)}`,
-      );
+      const ws = new WebSocket(`${proto}://${location.host}/ws/room/${code}`);
       wsRef.current = ws;
 
       ws.onopen = () => {
@@ -76,7 +74,7 @@ export function useRoom(code: string, name: string): RoomState {
       clearInterval(pingTimer);
       wsRef.current?.close();
     };
-  }, [code, name]);
+  }, [code, userId]);
 
   const send = useCallback((msg: ClientMessage) => {
     setError('');

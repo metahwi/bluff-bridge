@@ -14,9 +14,11 @@ import type { GameEvent, GameState } from '@bluff-bridge/engine';
 import { GRACE_MS, MAX_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
 import type { RoomView, ServerMessage } from '@bluff-bridge/protocol';
 import type { Env } from './index.ts';
+import { saveMatch } from './records.ts';
+import type { MatchRecord } from './records.ts';
 
 interface Seat {
-  /** 브라우저가 가진 비밀 값. 자리의 주인을 확인하는 데 쓴다. 3단계에서 로그인 계정으로 바뀐다. */
+  /** 자리 주인의 계정 ID. 서버(index.ts)가 로그인 세션에서 확인해 넘겨준 값이다. */
   pid: string;
   name: string;
   ready: boolean;
@@ -46,6 +48,8 @@ const rng = () => crypto.getRandomValues(new Uint32Array(1))[0]! / 4294967296;
 /** 방 하나 = Durable Object 하나. 모든 판정이 여기서 순서대로 처리된다. */
 export class GameRoom extends DurableObject<Env> {
   private room: Room | null | undefined;
+  /** 방금 끝난 판의 전적. commit에서 DB에 쓴다. */
+  private pendingRecord: MatchRecord | null = null;
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -72,6 +76,16 @@ export class GameRoom extends DurableObject<Env> {
 
   /** 저장 → 알람 예약 → 모두에게 전송. 상태를 바꾼 뒤에는 항상 이 함수로 끝낸다. */
   private async commit(room: Room): Promise<void> {
+    const record = this.pendingRecord;
+    this.pendingRecord = null;
+    if (record) {
+      try {
+        await saveMatch(this.env.DB, record);
+      } catch (e) {
+        // 전적 저장이 실패해도 게임 진행은 막지 않는다.
+        console.error('전적 저장 실패', e);
+      }
+    }
     if (room.seats.length === 0) return this.destroy();
     this.room = room;
     await this.ctx.storage.put('room', room);
@@ -124,6 +138,24 @@ export class GameRoom extends DurableObject<Env> {
     room.events = result.events;
     room.seq++;
     if (result.state.phase === 'over') {
+      const { state, events } = result;
+      const winner = state.winner!;
+      this.pendingRecord = {
+        roomCode: room.code,
+        rounds: state.round,
+        reason: events.some((e) => e.type === 'forfeit')
+          ? 'forfeit'
+          : state.players[winner]!.finished >= state.rules.finishesToWin
+            ? 'finish'
+            : 'elimination',
+        players: state.players.map((p, i) => ({
+          userId: room.seats[i]!.pid,
+          name: p.name,
+          finished: p.finished,
+          lost: p.lost,
+          won: i === winner,
+        })),
+      };
       room.status = 'over';
       room.deadline = null;
       for (const s of room.seats) s.rematch = false;
@@ -198,7 +230,7 @@ export class GameRoom extends DurableObject<Env> {
 
       const room = await this.load();
       if (!room) return reject('방을 찾을 수 없어요.');
-      const pid = url.searchParams.get('pid') ?? '';
+      const pid = url.searchParams.get('uid') ?? '';
       const name = (url.searchParams.get('name') ?? '').trim().slice(0, NAME_MAX);
       if (!/^[\w-]{8,64}$/.test(pid) || !name) return reject('입장 정보가 올바르지 않아요.');
 

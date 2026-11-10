@@ -181,8 +181,8 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
   return null;
 }
 
-export function Room({ code, name, onExit }: { code: string; name: string; onExit: () => void }) {
-  const { room, deadline, conn, error, fatal, send } = useRoom(code, name);
+export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: () => void }) {
+  const { room, deadline, conn, error, fatal, send } = useRoom(code, userId);
   const [reveal, setReveal] = useState<Challenged | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
