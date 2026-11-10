@@ -1,7 +1,7 @@
 // 게임판을 그리는 3D 무대. React와 무관하게 동작하고, StageView.tsx가 이 클래스를 감싼다.
 // 장면을 낮은 해상도로 그린 뒤 확대해서 픽셀 아트처럼 보이게 한다.
 import * as THREE from 'three';
-import { BANK_TOP, BRIDGE_HALF, deckY, makeBanks, makeBone, makeBridge, makeFlag, makeHippo, makeLilies, makePawn, plankX } from './models.ts';
+import { BANK_TOP, BRIDGE_HALF, box, deckY, toon, makeBanks, makeBone, makeBridge, makeFlag, makeHippo, makeLilies, makePawn, plankX } from './models.ts';
 import type { HippoRig } from './models.ts';
 import { MAX_RIPPLES, makeWater } from './water.ts';
 import { DiceHud } from './dice.ts';
@@ -26,7 +26,7 @@ export interface ChompInfo {
 }
 
 /** 추락 연출의 단계. 화면 위 글자(HTML)를 바꾸는 데 쓴다. */
-export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'kick' | 'chomp' | 'chew' | 'burp' | 'done';
+export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'kick' | 'rope' | 'push' | 'chomp' | 'chew' | 'burp' | 'done';
 
 export interface StageLabel {
   key: string;
@@ -121,7 +121,7 @@ export class Stage {
   onPhase: (phase: ChompPhase) => void = () => {};
   onLabels: (labels: StageLabel[]) => void = () => {};
   /** 장면 속 움직임에 맞춰 낼 효과음. */
-  onSfx: (name: 'hop' | 'step' | 'kick' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
+  onSfx: (name: 'hop' | 'step' | 'kick' | 'rope' | 'push' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
   private dice = new DiceHud();
 
   private renderer: THREE.WebGLRenderer;
@@ -666,11 +666,88 @@ export class Stage {
     this.moveCamera(1.2, 0.55, { x: HX * 0.9 + (onLand ? -0.9 : 0), y: 0.45, z: 1.5, zoom: onLand ? 1.5 : 1.65 });
 
     const T = 2.05;
-    /** 말이 공중에 떠 있는 시간. 육지에서 차이면 더 멀리 날아간다. */
-    const flight = onLand ? 0.66 : 0.52;
+    /**
+     * 상황에 맞는 장면을 고른다.
+     *  육지: 상대 말이 다리 위 멀리(3칸 이상) 있으면 거기서 올가미를 던지고(rope), 가까이 있으면 달려와 찬다(kick).
+     *  다리: 상대 말이 바로 옆 칸(또는 같은 칸)에 있으면 밀치고(push), 아니면 널빤지가 꺼진다(plank).
+     */
+    const rivalPos = other?.pos ?? null;
+    const variant: 'kick' | 'rope' | 'push' | 'plank' = onLand
+      ? rivalPos !== null && rivalPos >= 3
+        ? 'rope'
+        : 'kick'
+      : rivalPos !== null && rivalPos >= 1 && Math.abs(rivalPos - plankNo) <= 1
+        ? 'push'
+        : 'plank';
+    /** 말이 공중에 떠 있는 시간과 포물선의 높이. */
+    const flight = { kick: 0.66, rope: 0.72, push: 0.56, plank: 0.52 }[variant];
+    const arcHeight = { kick: 2.4, rope: 1.25, push: 1.5, plank: 1.05 }[variant];
     let kicker: THREE.Group | null = null;
+    /** 장면이 끝나면 치울 소품(밧줄 등). */
+    const props: THREE.Object3D[] = [];
 
-    if (onLand) {
+    if (variant === 'rope' && other) {
+      // 3-다. 다리 위의 상대 말이 올가미를 던져 홱 잡아당긴다
+      const rival = other;
+      rival.moving = true;
+      // 다리 난간 밧줄과 헷갈리지 않게 더 밝고 굵게
+      const rope = box([0.1, 0.1, 1], '#fff8e7');
+      rope.castShadow = false;
+      const loop = new THREE.Mesh(new THREE.TorusGeometry(0.46, 0.07, 6, 12), toon('#fff8e7'));
+      loop.rotation.x = Math.PI / 2;
+      rope.visible = loop.visible = false;
+      this.scene.add(rope, loop);
+      props.push(rope, loop);
+      const hand = () => rival.group.position.clone().setY(rival.group.position.y + 0.85);
+      const stretch = (to: THREE.Vector3) => {
+        const a = hand();
+        rope.position.copy(a).add(to).multiplyScalar(0.5);
+        rope.scale.set(0.1, 0.1, Math.max(0.01, a.distanceTo(to)));
+        rope.lookAt(to);
+        loop.position.copy(to);
+      };
+      // 머리 위로 빙빙 돌린 뒤 던진다
+      this.tween(T - 0.8, 0.5, (k) => (rival.group.rotation.y = 0.35 + k * Math.PI * 4));
+      this.at(T - 0.3, () => {
+        this.onSfx('rope');
+        rope.visible = loop.visible = true;
+        rival.group.rotation.y = -Math.PI / 2; // 출발 지점 쪽을 본다
+      });
+      const neck = stand.clone().setY(stand.y + 0.6);
+      this.tween(T - 0.3, 0.28, (k) => {
+        const tip = hand().lerp(neck, k);
+        tip.y += Math.sin(k * Math.PI) * 1.3;
+        stretch(tip);
+      });
+      this.at(T, () => {
+        this.onPhase('rope');
+        this.shake = 0.25;
+      });
+      // 당기는 동안 밧줄이 끌려오는 말을 따라 줄어든다(말의 위치는 아래 포물선에서 먼저 갱신된다)
+      this.tween(T, flight, (k) => {
+        stretch(victim.group.position.clone().setY(victim.group.position.y + 0.75));
+        rival.group.rotation.z = -0.4 * Math.sin(k * Math.PI);
+      });
+      this.at(T + flight, () => (rope.visible = loop.visible = false));
+    } else if (variant === 'push' && other) {
+      // 3-라. 바로 옆에 있던 상대 말이 다가와 난간 너머로 밀친다
+      const rival = other;
+      rival.moving = true;
+      const home = rival.base.clone();
+      const side = Math.sign(X - home.x) || 1;
+      const beside = new THREE.Vector3(X - side * 0.6, stand.y, stand.z - 0.15);
+      this.hop(rival, home, beside, T - 0.34, 0.28);
+      this.at(T, () => {
+        this.onPhase('push');
+        this.onSfx('push');
+        this.shake = 0.3;
+      });
+      this.tween(T - 0.03, 0.1, (k) => {
+        rival.group.position.x = beside.x + side * 0.3 * k;
+        rival.group.position.z = beside.z + 0.3 * k;
+      }, easeOut);
+      this.hop(rival, beside.clone().add(new THREE.Vector3(side * 0.3, 0, 0.3)), home, T + 0.4, 0.28);
+    } else if (onLand) {
       // 3-가. 상대 팀 말이 뒤에서 달려와 뻥 찬다
       const rival = info.other ?? (info.fallen + 1) % Math.max(2, this.pawns.length);
       const body = makePawn(rival);
@@ -721,9 +798,11 @@ export class Stage {
 
     // 말이 포물선을 그리며 하마 입으로
     this.tween(T + 0.02, flight - 0.02, (k) => {
-      const arc = Math.sin(k * Math.PI) * (onLand ? 2.4 : 1.05);
+      const arc = Math.sin(k * Math.PI) * arcHeight;
       victim.group.position.set(lerp(X, HX, k), lerp(stand.y, mouth.y, k) + arc, lerp(stand.z, mouth.z, k));
-      victim.group.rotation.set(k * 7, 0.35, k * (onLand ? 9 : 2.5));
+      // 차이거나 떨어질 때는 빙글빙글 돌고, 올가미에 끌려갈 때는 목이 당겨진 채 버둥거린다
+      if (variant === 'rope') victim.group.rotation.set(0.5 * k, 0.35, -0.8 * Math.sin(k * Math.PI));
+      else victim.group.rotation.set(k * 7, 0.35, k * (variant === 'kick' ? 9 : 2.5));
       victim.group.scale.setScalar(1);
     });
 
@@ -800,6 +879,12 @@ export class Stage {
         hippo.acting = false;
         hippo.home.x = HX; // 먹은 자리 근처에 눌러앉는다(다리 밑은 그대로)
         if (kicker) this.scene.remove(kicker);
+        for (const p of props) this.scene.remove(p);
+        if (other) {
+          // 올가미를 던지거나 밀쳤던 상대 말을 제자리로
+          other.group.rotation.set(0, 0.35, 0);
+          other.moving = false;
+        }
         victim.group.rotation.set(0, 0.35, 0);
         victim.moving = false;
         this.busy = false;

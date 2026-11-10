@@ -15,9 +15,48 @@ export interface Player {
   out: boolean;
 }
 
+/** 한 사람의 판 기록. 뻥 횟수는 게임 중에는 비밀이고, 끝난 뒤에만 공개한다(viewFor 참고). */
+export interface Stats {
+  /** 실제 눈과 다르게 선언한 횟수(꽝 포함). */
+  bluffs: number;
+  /** 상대가 믿어 줘서 안 들킨 뻥. */
+  bluffsPassed: number;
+  /** 의심한 횟수와 그중 맞힌 횟수. */
+  challenges: number;
+  challengesWon: number;
+}
+
+export const emptyStats = (): Stats => ({ bluffs: 0, bluffsPassed: 0, challenges: 0, challengesWon: 0 });
+
+/** 결과 화면의 점수 배점. */
+export const POINTS = { finish: 100, bluffPassed: 30, challengeWon: 40, eaten: -20, win: 150 };
+
+export interface ScoreLine {
+  finish: number;
+  bluff: number;
+  challenge: number;
+  eaten: number;
+  win: number;
+  total: number;
+}
+
+/** 끝난 판의 점수. 완주가 가장 크고, 안 들킨 뻥과 맞힌 의심이 보너스, 먹힌 말은 감점. */
+export function scoreOf(player: Player, stats: Stats, won: boolean): ScoreLine {
+  const line = {
+    finish: player.finished * POINTS.finish,
+    bluff: stats.bluffsPassed * POINTS.bluffPassed,
+    challenge: stats.challengesWon * POINTS.challengeWon,
+    eaten: player.lost * POINTS.eaten,
+    win: won ? POINTS.win : 0,
+  };
+  return { ...line, total: Math.max(0, line.finish + line.bluff + line.challenge + line.eaten + line.win) };
+}
+
 export interface GameState {
   rules: Rules;
   players: Player[];
+  /** stats[i] = i번 플레이어의 기록. */
+  stats: Stats[];
   phase: Phase;
   /** 주사위를 굴리는 사람. */
   turn: number;
@@ -77,6 +116,7 @@ export function createGame(names: string[], rules: Rules = RULES, firstTurn = 0)
       lost: 0,
       out: false,
     })),
+    stats: names.map(emptyStats),
     phase: 'roll',
     turn: firstTurn,
     responder: 0,

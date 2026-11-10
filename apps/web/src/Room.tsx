@@ -5,6 +5,7 @@ import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
 import { sound } from './sound.ts';
+import { Result } from './Result.tsx';
 import { SoundControl } from './SoundToggle.tsx';
 import { ThrowButton } from './ThrowButton.tsx';
 import { StageView } from './stage/StageView.tsx';
@@ -233,6 +234,14 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     if (resultShown) sound.play(iWon ? 'win' : 'lose');
   }, [resultShown, iWon]);
 
+  // 배경 음악: 대기실은 마을 곡, 대결 중은 신나는 곡, 누군가 한 번만 더 건너면 이길 때는 조여 오는 곡.
+  const inPlay = room?.status === 'playing';
+  const matchPoint = inPlay && !!room?.game?.players.some((p) => p.finished >= room.game!.rules.finishesToWin - 1);
+  useEffect(() => {
+    sound.setMusic(inPlay ? (matchPoint ? 'tense' : 'bridge') : 'village');
+    return () => sound.setMusic('village');
+  }, [inPlay, matchPoint]);
+
   // 무대에 넘길 상태. 내용이 같으면 같은 객체를 유지해 무대가 불필요하게 다시 그리지 않게 한다.
   const game = room?.game ?? null;
   const playing = room?.status === 'playing';
@@ -329,6 +338,22 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
 
         <div className="board">
           <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} controls={controls} />
+          {game && room.status === 'over' && !cue && (
+            <Result
+              game={game}
+              me={room.me}
+              waiting={!!me?.rematch}
+              note={
+                forfeiter === null
+                  ? null
+                  : forfeiter === room.me
+                    ? '내가 기권해서 패배로 기록됐어요.'
+                    : `${game.players[forfeiter]?.name} 님이 기권했어요.`
+              }
+              onRematch={() => send({ t: 'rematch' })}
+              onLeave={leave}
+            />
+          )}
         </div>
 
         <aside className="side">
@@ -384,19 +409,8 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                   </>
                 ) : (
                   <>
-                    <h2 className="result">
-                      {winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}
-                    </h2>
-                    {forfeiter !== null && (
-                      <p className="notice" role="status">
-                        {forfeiter === room.me
-                          ? '내가 기권해서 패배로 기록됐어요.'
-                          : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
-                      </p>
-                    )}
-                    <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
-                      {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
-                    </button>
+                    <h2>{winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}</h2>
+                    <small>점수표에서 다시 하기를 누르면 한 판 더 해요.</small>
                   </>
                 )}
                 {error && (

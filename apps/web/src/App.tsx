@@ -5,6 +5,7 @@ import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
 import { RULES } from '@bluff-bridge/engine';
+import { sound } from './sound.ts';
 import { SoundControl } from './SoundToggle.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
@@ -62,6 +63,11 @@ export function App() {
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+
+  // 방 밖(첫 화면, 매칭 대기)에서는 마을 곡을 튼다.
+  useEffect(() => {
+    if (!code) sound.setMusic('village');
+  }, [code]);
 
   useEffect(() => {
     const onPop = () => setCode(codeFromPath());

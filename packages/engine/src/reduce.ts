@@ -1,6 +1,6 @@
 import { BLANK } from './rules.ts';
 import type { Rules } from './rules.ts';
-import { awaiting, nextActive } from './state.ts';
+import { awaiting, emptyStats, nextActive } from './state.ts';
 import type { Action, GameEvent, GameState, Player } from './state.ts';
 
 /** 규칙에 어긋나는 행동. 서버는 이 오류를 그대로 요청자에게 돌려준다. */
@@ -86,6 +86,9 @@ export function reduce(
 
   const state = structuredClone(prev);
   const events: GameEvent[] = [];
+  // 기록 기능이 생기기 전에 시작한 판(서버에 저장돼 있던 진행 중인 판)도 이어서 둘 수 있게 한다.
+  state.stats ??= state.players.map(emptyStats);
+  const bluffing = state.die !== null && state.claim !== null && (state.die === BLANK || state.die !== state.claim);
 
   switch (action.type) {
     case 'roll': {
@@ -102,6 +105,7 @@ export function reduce(
         throw new GameError(`1~${state.rules.maxClaim} 중에서 선언해 주세요.`);
       }
       state.claim = v;
+      if (state.die === BLANK || state.die !== v) state.stats[player]!.bluffs++;
       state.phase = 'respond';
       events.push({ type: 'claimed', player, value: v });
       break;
@@ -109,6 +113,7 @@ export function reduce(
     case 'accept': {
       if (state.phase !== 'respond') throw new GameError('지금은 응답할 수 없어요.');
       const steps = state.claim!;
+      if (bluffing) state.stats[state.turn]!.bluffsPassed++;
       events.push({ type: 'accepted', player, roller: state.turn, steps });
       advance(state, state.turn, steps, events);
       endTurn(state, events);
@@ -120,6 +125,8 @@ export function reduce(
       const claim = state.claim!;
       const truth = die !== BLANK && die === claim;
       const fallen = truth ? player : state.turn;
+      state.stats[player]!.challenges++;
+      if (!truth) state.stats[player]!.challengesWon++;
       events.push({ type: 'challenged', challenger: player, roller: state.turn, die, claim, truth, fallen });
       fall(state, fallen, events);
       if (truth) advance(state, state.turn, claim, events);

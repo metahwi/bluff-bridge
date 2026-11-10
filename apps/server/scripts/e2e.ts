@@ -59,6 +59,10 @@ function connect(code: string, name: string, cookie: string): Promise<Client> {
       const msg = JSON.parse(raw) as ServerMessage;
       if (msg.t === 'error') return void c.errors.push(msg.message);
       const { game, me, events } = msg.room;
+      // 누가 뻥을 몇 번 쳤는지는 판이 끝나기 전에는 누구에게도 가지 않는다.
+      if (game && game.phase !== 'over') {
+        check(game.stats === null && !raw.includes('bluffs'), `${name}: 게임 중인데 뻥 기록이 전송됨`);
+      }
       // 차례가 아닌 사람이 받은 메시지에는 주사위 눈이 없어야 한다.
       if (game && game.turn !== me) {
         check(game.die === null, `${name}: 상대 차례인데 game.die=${game.die}`);
@@ -171,6 +175,11 @@ const g = a.room!.game!;
 console.log(`게임 종료: ${g.round}턴, 행동 ${moves}번, 의심 ${challenges}번, 승자 ${g.players[g.winner!]!.name}`);
 check(a.room!.game!.winner === b.room!.game!.winner, '두 사람이 본 승자가 다름');
 check(challenges > 0, '의심이 한 번도 일어나지 않아 공개 연출을 확인하지 못함');
+// 끝난 뒤에는 점수표에 쓸 기록이 온다. 자동 대결은 두 번에 한 번 뻥을 치므로 뻥 기록이 있어야 한다.
+const stats = a.room!.game!.stats;
+check(Array.isArray(stats) && stats.length === 2, '끝났는데 판 기록이 오지 않음');
+check((stats?.[0]?.bluffs ?? 0) + (stats?.[1]?.bluffs ?? 0) > 0, '뻥 기록이 0');
+console.log('판 기록:', JSON.stringify(stats));
 
 // 5-1. 전적이 두 사람 모두에게 기록된다
 const winnerIsA = g.winner === a.room!.me;

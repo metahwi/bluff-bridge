@@ -9,7 +9,7 @@ page.on('pageerror', (e) => problems.push(e.message));
 page.on('console', (m) => m.type() === 'error' && problems.push(m.text()));
 await page.goto('http://localhost:5173/', { waitUntil: 'networkidle' });
 
-const names = ['music', 'hop', 'step', 'kick', 'throw', 'dice', 'cup', 'suspense', 'lie', 'truth', 'whoosh', 'splash', 'crunch', 'munch', 'bone', 'burp', 'win', 'lose'];
+const names = ['village', 'bridge', 'tense', 'hop', 'step', 'kick', 'rope', 'push', 'count', 'throw', 'dice', 'cup', 'suspense', 'lie', 'truth', 'whoosh', 'splash', 'crunch', 'munch', 'bone', 'burp', 'win', 'lose'];
 for (const name of names) {
   const r = await page.evaluate((n) => window.__sound.measure(n), name);
   const verdict = r.rms < 0.004 ? '너무 작음' : r.peak > 0.98 ? '찢어질 수 있음' : '정상';

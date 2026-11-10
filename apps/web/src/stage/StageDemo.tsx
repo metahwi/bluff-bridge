@@ -1,12 +1,19 @@
-// 디자인 작업용 화면. 주소에 ?stage=idle 또는 ?stage=chomp 를 붙이면 게임 없이 무대만 볼 수 있다.
-// ?stage=dice 는 주사위(내가 던짐), ?stage=cup 은 상대가 던져 컵으로 덮인 모습.
+// 디자인 작업용 화면. 주소에 ?stage=… 를 붙이면 게임 없이 무대만 볼 수 있다.
+//   idle            평소 모습
+//   chomp|push      다리 위에서 먹힘(널빤지가 꺼짐 | 옆 칸의 상대가 밀침)
+//   kick|rope       출발 지점에서 먹힘(상대가 달려와 참 | 다리 위에서 올가미를 던짐)
+//   dice|cup        주사위(내가 던짐 | 상대가 던져 컵으로 덮임)
+//   result          결과 점수표
+// &at=2.4 를 붙이면 연출 시작 2.4초 뒤의 장면에서 멈춘다(스크린샷용).
 import { useEffect, useRef, useState } from 'react';
+import { createGame, viewFor } from '@bluff-bridge/engine';
+import { Result } from '../Result.tsx';
 import { ThrowButton } from '../ThrowButton.tsx';
 import { StageView } from './StageView.tsx';
 import type { ChompCue, StageControls } from './StageView.tsx';
 import type { StageState } from './Stage.ts';
 
-const BEFORE: StageState = {
+const BASE: StageState = {
   length: 10,
   pawns: [4, 7],
   crowd: [
@@ -16,39 +23,48 @@ const BEFORE: StageState = {
   active: 0,
   dice: { mode: 'ready', face: null },
 };
-const AFTER: StageState = { ...BEFORE, pawns: [0, 7], crowd: [{ reserve: 4, finished: 1 }, BEFORE.crowd[1]!], active: 1 };
+
+/** 연출별로, 먹히기 직전에 두 말이 서 있던 칸. 먹히는 쪽은 항상 0번(주황). */
+const SCENES: Record<string, [number, number]> = { chomp: [4, 8], push: [4, 5], kick: [0, 1], rope: [0, 6] };
+
+/** 결과 화면에 넣을 가짜 판. */
+function finishedGame() {
+  const g = createGame(['에이', '비']);
+  Object.assign(g.players[0]!, { finished: 3, lost: 2, reserve: 1 });
+  Object.assign(g.players[1]!, { finished: 1, lost: 4, reserve: 1 });
+  g.stats = [
+    { bluffs: 7, bluffsPassed: 5, challenges: 4, challengesWon: 3 },
+    { bluffs: 4, bluffsPassed: 1, challenges: 6, challengesWon: 2 },
+  ];
+  g.phase = 'over';
+  g.winner = 0;
+  return viewFor(g, 0);
+}
 
 export function StageDemo({ mode }: { mode: string }) {
-  const [state, setState] = useState(BEFORE);
+  const [state, setState] = useState(BASE);
   const [cue, setCue] = useState<ChompCue | null>(null);
   const controls = useRef<StageControls | null>(null);
 
-  function chomp() {
-    setCue({ id: Date.now(), fallen: 0, other: 1, claim: 5, die: 2, truth: false, victimName: '에이' });
-    setState(AFTER);
-  }
-  /** 출발 지점(육지)에 있던 말이 먹히는 경우: 상대 말이 걷어찬다. */
-  function kick() {
-    setState({ ...BEFORE, pawns: [0, 7] });
+  function scene(name: string) {
+    const [a, b] = SCENES[name] ?? SCENES.chomp!;
+    setState({ ...BASE, pawns: [a, b] });
     setTimeout(() => {
-      setCue({ id: Date.now(), fallen: 0, other: 1, claim: 3, die: 3, truth: true, victimName: '에이' });
-      setState(AFTER);
+      setCue({ id: Date.now(), fallen: 0, other: 1, claim: 5, die: 2, truth: false, victimName: '에이' });
+      setState({ ...BASE, pawns: [0, b], crowd: [{ reserve: 4, finished: 1 }, BASE.crowd[1]!], active: 1 });
     }, 100);
   }
   const land = (face: number | null) => setState((s) => ({ ...s, dice: { mode: 'shown', face } }));
-  const reset = () => setState(BEFORE);
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
     const timers: ReturnType<typeof setTimeout>[] = [];
-    if (mode === 'chomp' || mode === 'kick') {
-      // ?stage=chomp&at=2.4 → 연출 시작 2.4초 뒤의 장면에서 멈춘다(스크린샷용). ?stage=kick 은 육지에서 차이는 경우.
+    if (mode in SCENES) {
       const at = Number(query.get('at'));
       timers.push(
         setTimeout(() => {
-          if (mode === 'kick') kick();
-          else chomp();
-          if (at > 0) setTimeout(() => (window as unknown as { __stage?: { debugSeek(s: number): void } }).__stage?.debugSeek(at), 220);
+          scene(mode);
+          if (at > 0) setTimeout(() => (window as unknown as { __stage?: { debugSeek(s: number): void } }).__stage?.debugSeek(at), 500);
         }, 600),
       );
     }
@@ -70,6 +86,7 @@ export function StageDemo({ mode }: { mode: string }) {
       </header>
       <div className="board">
         <StageView state={state} cue={cue} onCueDone={() => setCue(null)} controls={controls} />
+        {mode === 'result' && <Result game={finishedGame()} me={0} waiting={false} onRematch={() => {}} onLeave={() => {}} />}
       </div>
       <aside className="side">
         <section className="panel actions">
@@ -85,15 +102,14 @@ export function StageDemo({ mode }: { mode: string }) {
             <button className="ghost small" onClick={() => land(null)}>
               상대가 던짐
             </button>
-            <button className="ghost small" onClick={reset}>
+            <button className="ghost small" onClick={() => setState(BASE)}>
               다시
             </button>
-            <button className="ghost small" onClick={chomp}>
-              추락 연출
-            </button>
-            <button className="ghost small" onClick={kick}>
-              걷어차기 연출
-            </button>
+            {Object.keys(SCENES).map((name) => (
+              <button key={name} className="ghost small" onClick={() => scene(name)}>
+                {{ chomp: '널빤지', push: '밀치기', kick: '걷어차기', rope: '올가미' }[name]}
+              </button>
+            ))}
           </div>
         </section>
       </aside>

@@ -5,6 +5,8 @@ export type Sfx =
   | 'hop'
   | 'step'
   | 'kick'
+  | 'rope'
+  | 'push'
   | 'roll'
   | 'throw'
   | 'dice'
@@ -19,38 +21,123 @@ export type Sfx =
   | 'bone'
   | 'burp'
   | 'win'
-  | 'lose';
+  | 'lose'
+  | 'count';
+
+/** 상황별 배경 음악. village: 첫 화면·대기실, bridge: 대결 중, tense: 누군가 한 번만 더 건너면 이길 때. */
+export type Track = 'village' | 'bridge' | 'tense';
 
 const NOTE: Record<string, number> = { C: 0, D: 2, E: 4, F: 5, G: 7, A: 9, B: 11 };
+const midiOf = (name: string) => 12 * (Number(name.slice(-1)) + 1) + NOTE[name[0]!]! + (name[1] === '#' ? 1 : 0);
+const hzOf = (midi: number) => 440 * 2 ** ((midi - 69) / 12);
 /** 'C5' 같은 음 이름을 주파수로. */
-function hz(name: string): number {
-  const midi = 12 * (Number(name.slice(-1)) + 1) + NOTE[name[0]!]! + (name[1] === '#' ? 1 : 0);
-  return 440 * 2 ** ((midi - 69) / 12);
+const hz = (name: string) => hzOf(midiOf(name));
+
+interface Song {
+  /** 1분당 박자 수. */
+  tempo: number;
+  /** 마디마다 화음. 'F G'처럼 둘을 쓰면 반 마디씩. 'Em'의 m은 단조. */
+  chords: string[];
+  /** 마디마다 8분음표 8개. '.'은 쉼표. */
+  melody: string[];
+  lead: OscillatorType;
+  /** 드럼 세기 0~1. 마을 곡은 가볍게, 대결 곡은 힘 있게. */
+  drive: number;
 }
 
-// 8마디 반복곡. 한 마디에 8분음표 8개, '.'은 쉼표.
-// 화음: C | Am | F | G | C | Am | F G | C
-const MELODY = [
-  'E5 G5 C6 G5 E5 G5 C6 .',
-  'E5 A5 C6 A5 E5 A5 C6 .',
-  'F5 A5 C6 A5 F5 A5 D6 C6',
-  'B5 G5 D5 G5 B5 D6 B5 .',
-  'C6 . G5 E5 G5 . C6 E6',
-  'D6 C6 A5 E5 A5 . C6 A5',
-  'F5 A5 C6 F6 D6 B5 G5 B5',
-  'C6 . G5 . C5 . . .',
-].flatMap((bar) => bar.split(' '));
-// 뒤뚱거리는 하마 같은 저음: 4분음표로 근음과 5음을 오간다.
-const BASS = ['C3 G3 C3 G3', 'A2 E3 A2 E3', 'F2 C3 F2 C3', 'G2 D3 G2 D3', 'C3 G3 C3 G3', 'A2 E3 A2 E3', 'F2 C3 G2 D3', 'C3 G3 C3 .'].flatMap(
-  (bar) => bar.split(' '),
-);
-const STEP = 60 / 116 / 2; // 8분음표 하나의 길이(초). 빠르기 116.
+// 곡은 모두 16마디(A 8마디 + B 8마디)를 반복한다.
+const SONGS: Record<Track, Song> = {
+  // 느긋한 마을. 다장조.
+  village: {
+    tempo: 100,
+    lead: 'triangle',
+    drive: 0.35,
+    chords: ['C', 'G', 'Am', 'F', 'C', 'G', 'F G', 'C', 'Am', 'Em', 'F', 'C', 'Dm', 'G', 'C', 'G'],
+    melody: [
+      'E5 . G5 . C6 . G5 E5',
+      'D5 . G5 . B5 . G5 D5',
+      'C5 . E5 . A5 . E5 C5',
+      'A5 . G5 F5 . A5 C6 .',
+      'E5 G5 C6 . E6 . D6 C6',
+      'B5 . G5 . D5 G5 B5 .',
+      'A5 F5 C5 F5 B5 G5 D5 G5',
+      'C6 . . G5 E5 . C5 .',
+      'A5 . C6 . E6 . C6 A5',
+      'G5 . B5 . E6 . B5 G5',
+      'F5 A5 C6 . A5 . F5 .',
+      'E5 G5 C6 . G5 . E5 .',
+      'D5 F5 A5 . D6 . A5 F5',
+      'G5 B5 D6 . B5 . G5 .',
+      'E6 . C6 . G5 . E5 G5',
+      'D6 . B5 . G5 . D5 .',
+    ],
+  },
+  // 신나는 대결. 사장조.
+  bridge: {
+    tempo: 134,
+    lead: 'square',
+    drive: 0.8,
+    chords: ['G', 'D', 'Em', 'C', 'G', 'D', 'C D', 'G', 'Em', 'C', 'G', 'D', 'Em', 'C', 'Am', 'D'],
+    melody: [
+      'B4 D5 G5 . B5 A5 G5 D5',
+      'A5 . F#5 D5 F#5 A5 D6 .',
+      'B5 . G5 E5 G5 B5 E6 D6',
+      'C6 . G5 E5 C5 E5 G5 .',
+      'B4 D5 G5 . B5 A5 G5 B5',
+      'D6 . A5 F#5 A5 . D6 F#6',
+      'E6 C6 G5 E5 F#5 A5 D6 A5',
+      'G5 . D5 . G5 . . .',
+      'E5 G5 B5 G5 E5 G5 B5 .',
+      'E5 G5 C6 G5 E5 G5 C6 .',
+      'D5 G5 B5 G5 D6 B5 G5 .',
+      'F#5 A5 D6 A5 F#5 . A5 .',
+      'B5 . E6 . D6 B5 G5 E5',
+      'C6 . E6 . D6 C6 G5 E5',
+      'A5 C6 E6 C6 A5 C6 E6 .',
+      'D6 . A5 . F#5 A5 D6 .',
+    ],
+  },
+  // 매치포인트. 마단조로 조여 온다.
+  tense: {
+    tempo: 152,
+    lead: 'square',
+    drive: 1,
+    chords: ['Em', 'Em', 'C', 'D', 'Em', 'Em', 'C', 'B', 'Em', 'G', 'C', 'D', 'Em', 'G', 'C', 'B'],
+    melody: [
+      'E5 . E5 G5 . E5 B5 .',
+      'E5 . E5 G5 . B5 E6 .',
+      'C5 . E5 G5 . C6 G5 .',
+      'D5 . F#5 A5 . D6 A5 .',
+      'E5 . E5 G5 . E5 B5 .',
+      'G5 . B5 E6 . G6 E6 .',
+      'C6 . G5 E5 C5 E5 G5 .',
+      'B5 . F#5 D#5 B4 D#5 F#5 .',
+      'E6 . B5 G5 E5 G5 B5 .',
+      'D6 . B5 G5 D5 G5 B5 .',
+      'E6 . C6 G5 E5 G5 C6 .',
+      'F#6 . D6 A5 F#5 A5 D6 .',
+      'E6 . B5 G5 E6 . B5 G5',
+      'D6 . B5 G5 D6 . B5 G5',
+      'C6 . G5 E5 C6 E6 G6 .',
+      'F#6 . D#6 B5 F#5 . B5 .',
+    ],
+  },
+};
+
+/** 'Em' → 근음(미디 번호, 2옥타브)과 3화음의 음정. */
+function chord(name: string): { root: number; tones: number[] } {
+  const minor = name.endsWith('m');
+  const root = midiOf((minor ? name.slice(0, -1) : name) + '2');
+  return { root, tones: minor ? [0, 3, 7] : [0, 4, 7] };
+}
 
 const STORAGE_KEY = 'hama:sound';
 const VOLUME_KEY = 'hama:volume';
+const MUSIC_LEVEL = 0.42;
 
 class Sound {
   private ctx: AudioContext | null = null;
+  private master: GainNode | null = null;
   private music: GainNode | null = null;
   private fx: GainNode | null = null;
   private timer: ReturnType<typeof setInterval> | undefined;
@@ -58,7 +145,8 @@ class Sound {
   private nextTime = 0;
   private noiseBuffer: AudioBuffer | null = null;
   private listeners = new Set<() => void>();
-  private master: GainNode | null = null;
+  private track: Track = 'village';
+  private wanted: Track = 'village';
   enabled = true;
   /** 전체 음량 0~1. */
   volume = 0.7;
@@ -69,7 +157,7 @@ class Sound {
       const saved = Number(localStorage.getItem(VOLUME_KEY) ?? NaN);
       if (saved >= 0 && saved <= 1) this.volume = saved;
     } catch {
-      // 저장소를 못 쓰면 기본값(켬)
+      // 저장소를 못 쓰면 기본값
     }
     if (typeof window === 'undefined') return;
     const unlock = () => this.unlock();
@@ -112,11 +200,9 @@ class Sound {
     for (const fn of this.listeners) fn();
   }
 
-  /** 주사위 힘을 모으는 동안 나는 소리. 힘이 셀수록 높은 음. */
-  charge(power: number): void {
-    const ctx = this.ctx;
-    if (!ctx || !this.fx || !this.enabled || ctx.state !== 'running') return;
-    this.tone(ctx, this.fx, 'square', 260 + power * 900, ctx.currentTime + 0.005, 0.045, 0.09);
+  /** 상황에 맞는 곡으로 바꾼다. 마디가 끝날 때 자연스럽게 넘어간다. */
+  setMusic(track: Track): void {
+    this.wanted = track;
   }
 
   /** 사용자의 첫 입력 때 호출된다. 오디오를 만들고 음악을 시작한다. */
@@ -127,6 +213,7 @@ class Sound {
       if (!Ctx) return;
       this.ctx = new Ctx();
       this.build(this.ctx);
+      this.track = this.wanted;
       this.nextTime = this.ctx.currentTime + 0.1;
       this.timer = setInterval(() => this.schedule(), 60);
     }
@@ -143,9 +230,24 @@ class Sound {
     this.master = ctx.createGain();
     this.master.gain.value = this.volume ** 2;
     this.master.connect(limiter);
+
     this.music = ctx.createGain();
-    this.music.gain.value = 0.5;
+    this.music.gain.value = MUSIC_LEVEL;
     this.music.connect(this.master);
+    // 메아리: 음악이 덜 메마르게 들리도록 살짝 되울린다.
+    const delay = ctx.createDelay(1);
+    delay.delayTime.value = 0.27;
+    const feedback = ctx.createGain();
+    feedback.gain.value = 0.28;
+    const wet = ctx.createGain();
+    wet.gain.value = 0.22;
+    const dull = ctx.createBiquadFilter();
+    dull.type = 'lowpass';
+    dull.frequency.value = 2600;
+    this.music.connect(delay);
+    delay.connect(dull).connect(feedback).connect(delay);
+    dull.connect(wet).connect(this.master);
+
     this.fx = ctx.createGain();
     this.fx.gain.value = 1.4;
     this.fx.connect(this.master);
@@ -188,16 +290,45 @@ class Sound {
     src.stop(at + dur + 0.02);
   }
 
-  /** 음악의 한 칸(8분음표)을 예약한다. */
-  private playStep(ctx: BaseAudioContext, out: AudioNode, i: number, at: number): void {
-    const note = MELODY[i % MELODY.length]!;
-    if (note !== '.') this.tone(ctx, out, 'square', hz(note), at, STEP * 0.92, 0.1);
-    if (i % 2 === 0) {
-      const bass = BASS[(i / 2) % BASS.length]!;
-      if (bass !== '.') this.tone(ctx, out, 'triangle', hz(bass), at, STEP * 1.7, 0.3);
+  /**
+   * 음악의 한 칸(8분음표). 네 겹으로 쌓는다:
+   * 가락(멜로디) + 저음(근음과 5음을 오가는 4분음표) + 엇박 화음 + 드럼(쿵, 탁, 칙).
+   */
+  private playStep(ctx: BaseAudioContext, out: AudioNode, song: Song, i: number, at: number): void {
+    const stepLen = 60 / song.tempo / 2;
+    const bars = song.melody.length;
+    const bar = Math.floor(i / 8) % bars;
+    const pos = i % 8;
+    const names = song.chords[bar]!.split(' ');
+    const { root, tones } = chord(names[pos < 4 ? 0 : names.length - 1]!);
+    // 16마디의 뒤쪽 절반(B)에서는 가락을 한 겹 더 얹어 변화를 준다.
+    const second = bar >= bars / 2;
+
+    const note = song.melody[bar]!.split(' ')[pos]!;
+    if (note !== '.') {
+      this.tone(ctx, out, song.lead, hz(note), at, stepLen * 0.95, song.lead === 'square' ? 0.085 : 0.2);
+      if (second) this.tone(ctx, out, 'triangle', hz(note) / 2, at, stepLen * 0.9, 0.1);
     }
-    if (i % 4 === 0) this.tone(ctx, out, 'sine', 150, at, 0.12, 0.3, 45); // 쿵
-    if (i % 2 === 1) this.hiss(ctx, out, at, 0.04, 0.07, 'highpass', 7000); // 칙
+
+    if (pos % 2 === 0) {
+      // 저음: 근음 → 5음 → 한 옥타브 위 근음 → 5음
+      const offset = [0, 7, 12, 7][pos / 2]!;
+      this.tone(ctx, out, 'triangle', hzOf(root + offset), at, stepLen * 1.8, 0.32);
+    } else {
+      // 엇박에 화음을 짧게 찍는다
+      for (const t of tones) this.tone(ctx, out, 'square', hzOf(root + 24 + t), at, stepLen * 0.5, 0.028);
+    }
+
+    const d = song.drive;
+    if (pos === 0 || pos === 4) this.tone(ctx, out, 'sine', 150, at, 0.13, 0.42 * (0.6 + d * 0.4), 45); // 쿵
+    if (pos === 3 && d > 0.6) this.tone(ctx, out, 'sine', 140, at, 0.09, 0.22, 50);
+    if ((pos === 2 || pos === 6) && d > 0.5) {
+      this.hiss(ctx, out, at, 0.11, 0.2 * d, 'bandpass', 1900); // 탁
+      this.tone(ctx, out, 'triangle', 220, at, 0.06, 0.1 * d, 140);
+    }
+    this.hiss(ctx, out, at, 0.035, (pos % 2 ? 0.075 : 0.04) * (0.5 + d * 0.5), 'highpass', 7200); // 칙
+    // 네 마디마다 마지막 박에 드럼을 채워 넣어 다음으로 넘긴다
+    if (bar % 4 === 3 && pos >= 6 && d > 0.5) this.hiss(ctx, out, at + stepLen / 2, 0.08, 0.16 * d, 'bandpass', 1500 - pos * 80);
   }
 
   private schedule(): void {
@@ -205,8 +336,14 @@ class Sound {
     if (!ctx || !this.music || ctx.state !== 'running') return;
     if (this.nextTime < ctx.currentTime) this.nextTime = ctx.currentTime + 0.05; // 탭을 오래 가렸다 돌아온 경우
     while (this.nextTime < ctx.currentTime + 0.25) {
-      this.playStep(ctx, this.music, this.step++, this.nextTime);
-      this.nextTime += STEP;
+      // 곡은 마디가 바뀔 때만 갈아탄다
+      if (this.step % 8 === 0 && this.wanted !== this.track) {
+        this.track = this.wanted;
+        this.step = 0;
+      }
+      const song = SONGS[this.track];
+      this.playStep(ctx, this.music, song, this.step++, this.nextTime);
+      this.nextTime += 60 / song.tempo / 2;
     }
   }
 
@@ -214,7 +351,14 @@ class Sound {
   duck(on: boolean): void {
     if (!this.ctx || !this.music) return;
     this.music.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.music.gain.linearRampToValueAtTime(on ? 0.08 : 0.5, this.ctx.currentTime + 0.4);
+    this.music.gain.linearRampToValueAtTime(on ? 0.07 : MUSIC_LEVEL, this.ctx.currentTime + 0.4);
+  }
+
+  /** 주사위 힘을 모으는 동안 나는 소리. 힘이 셀수록 높은 음. */
+  charge(power: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.fx || !this.enabled || ctx.state !== 'running') return;
+    this.tone(ctx, this.fx, 'square', 260 + power * 900, ctx.currentTime + 0.005, 0.045, 0.09);
   }
 
   play(name: Sfx): void {
@@ -228,9 +372,6 @@ class Sound {
       case 'hop':
         this.tone(ctx, out, 'square', 520, t, 0.09, 0.34, 880);
         break;
-      case 'roll':
-        for (let i = 0; i < 6; i++) this.hiss(ctx, out, t + i * 0.055 + Math.random() * 0.02, 0.035, 0.35, 'bandpass', 1800 + Math.random() * 2600);
-        break;
       case 'step':
         // 나무 널빤지를 밟는 소리: 낮은 통 + 살짝 삐걱
         this.tone(ctx, out, 'triangle', 190 + Math.random() * 50, t, 0.09, 0.55, 95);
@@ -242,6 +383,21 @@ class Sound {
         this.tone(ctx, out, 'sine', 210, t, 0.2, 0.9, 48);
         this.hiss(ctx, out, t, 0.06, 0.8, 'lowpass', 2200);
         this.tone(ctx, out, 'square', 900, t + 0.02, 0.07, 0.15, 300);
+        break;
+      case 'push':
+        // 퍽!
+        this.tone(ctx, out, 'sine', 160, t, 0.14, 0.8, 60);
+        this.hiss(ctx, out, t, 0.05, 0.6, 'lowpass', 1200);
+        break;
+      case 'rope':
+        // 올가미가 휙 날아가 탁 걸린다
+        this.hiss(ctx, out, t, 0.28, 0.35, 'bandpass', 600, 3200);
+        this.tone(ctx, out, 'sine', 400, t, 0.26, 0.2, 1500);
+        this.hiss(ctx, out, t + 0.28, 0.04, 0.45, 'highpass', 3000);
+        this.tone(ctx, out, 'square', 700, t + 0.28, 0.06, 0.2, 240);
+        break;
+      case 'roll':
+        for (let i = 0; i < 6; i++) this.hiss(ctx, out, t + i * 0.055 + Math.random() * 0.02, 0.035, 0.35, 'bandpass', 1800 + Math.random() * 2600);
         break;
       case 'throw':
         this.tone(ctx, out, 'sine', 300, t, 0.22, 0.3, 1100);
@@ -315,10 +471,17 @@ class Sound {
         break;
       }
       case 'win':
-        ['C5', 'E5', 'G5', 'C6', 'E6'].forEach((n, i) => this.tone(ctx, out, 'square', hz(n), t + i * 0.1, i === 4 ? 0.5 : 0.12, 0.16));
+        // 팡파르: 올라가는 화음 뒤에 길게 뻗는 마무리
+        ['C5', 'E5', 'G5', 'C6', 'E6', 'G6'].forEach((n, i) => this.tone(ctx, out, 'square', hz(n), t + i * 0.09, 0.14, 0.15));
+        ['C5', 'E5', 'G5', 'C6'].forEach((n) => this.tone(ctx, out, 'square', hz(n), t + 0.6, 0.9, 0.1));
+        this.tone(ctx, out, 'triangle', hz('C3'), t + 0.6, 0.9, 0.4);
         break;
       case 'lose':
         ['G4', 'E4', 'C4', 'A3'].forEach((n, i) => this.tone(ctx, out, 'triangle', hz(n), t + i * 0.18, i === 3 ? 0.6 : 0.2, 0.3));
+        break;
+      case 'count':
+        // 점수가 올라갈 때 딸깍
+        this.tone(ctx, out, 'square', 1250, t, 0.04, 0.22);
         break;
     }
   }
@@ -327,13 +490,16 @@ class Sound {
    * 개발용 점검: 소리를 실제로 재생하지 않고 계산만 해서 음량을 잰다.
    * peak가 1에 가까우면 찢어지고, rms가 0에 가까우면 안 들린다.
    */
-  async measure(what: 'music' | Sfx): Promise<{ peak: number; rms: number; seconds: number }> {
-    const seconds = what === 'music' ? STEP * 64 : 1.5;
+  async measure(what: Track | Sfx): Promise<{ peak: number; rms: number; seconds: number }> {
+    const song = (SONGS as Record<string, Song | undefined>)[what];
+    const stepLen = song ? 60 / song.tempo / 2 : 0;
+    const steps = song ? song.melody.length * 8 : 0;
+    const seconds = song ? stepLen * steps + 1 : 1.8;
     const ctx = new OfflineAudioContext(1, Math.ceil(44100 * seconds), 44100);
     const saved = { music: this.music, fx: this.fx, noise: this.noiseBuffer, master: this.master };
     this.build(ctx);
-    if (what === 'music') for (let i = 0; i < 64; i++) this.playStep(ctx, this.music!, i, i * STEP);
-    else this.render(ctx, this.fx!, what, 0.01);
+    if (song) for (let i = 0; i < steps; i++) this.playStep(ctx, this.music!, song, i, i * stepLen);
+    else this.render(ctx, this.fx!, what as Sfx, 0.01);
     const data = (await ctx.startRendering()).getChannelData(0);
     this.music = saved.music;
     this.fx = saved.fx;
@@ -345,7 +511,7 @@ class Sound {
       peak = Math.max(peak, Math.abs(v));
       sum += v * v;
     }
-    return { peak: +peak.toFixed(3), rms: +Math.sqrt(sum / data.length).toFixed(4), seconds: +seconds.toFixed(2) };
+    return { peak: +peak.toFixed(3), rms: +Math.sqrt(sum / data.length).toFixed(4), seconds: +seconds.toFixed(1) };
   }
 }
 

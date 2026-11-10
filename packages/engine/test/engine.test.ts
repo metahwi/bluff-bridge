@@ -7,6 +7,7 @@ import {
   createGame,
   forfeit,
   reduce,
+  scoreOf,
   timeoutAction,
   viewEvent,
   viewFor,
@@ -217,6 +218,45 @@ describe('정보 은닉', () => {
   it('의심으로 공개된 주사위는 모두에게 보인다', () => {
     const { events } = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'challenge' });
     expect(viewEvent(events[0]!, null)).toMatchObject({ die: 2 });
+  });
+});
+
+describe('판 기록과 점수', () => {
+  it('뻥, 안 들킨 뻥, 의심 성공을 센다', () => {
+    // a가 2를 굴려 5라고 뻥 → b가 믿음
+    let s = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'accept' }).state;
+    expect(s.stats[0]).toMatchObject({ bluffs: 1, bluffsPassed: 1 });
+    // b가 꽝을 굴려 3이라고 뻥 → a가 의심해서 맞힘
+    s = play(toRespond(s, BLANK, 3), 0, { type: 'challenge' }).state;
+    expect(s.stats[1]).toMatchObject({ bluffs: 1, bluffsPassed: 0 });
+    expect(s.stats[0]).toMatchObject({ challenges: 1, challengesWon: 1 });
+    // a가 4를 굴려 4라고 진실 → b가 의심해서 틀림
+    s = play(toRespond(s, 4, 4), 1, { type: 'challenge' }).state;
+    expect(s.stats[0]!.bluffs).toBe(1);
+    expect(s.stats[1]).toMatchObject({ challenges: 1, challengesWon: 0 });
+  });
+
+  it('뻥 횟수는 판이 끝나기 전에는 누구에게도 보이지 않는다', () => {
+    const s = toRespond(createGame(['a', 'b']), 2, 5);
+    expect(viewFor(s, 0).stats).toBeNull();
+    expect(viewFor(s, 1).stats).toBeNull();
+    expect(JSON.stringify(viewFor(s, 1))).not.toContain('bluffs');
+    const over = forfeit(s, 1).state;
+    expect(viewFor(over, 1).stats?.[0]).toMatchObject({ bluffs: 1 });
+  });
+
+  it('점수: 완주 100, 안 들킨 뻥 30, 맞힌 의심 40, 먹힌 말 -20, 승리 150', () => {
+    const p = { ...createGame(['a', 'b']).players[0]!, finished: 3, lost: 2 };
+    const line = scoreOf(p, { bluffs: 5, bluffsPassed: 4, challenges: 3, challengesWon: 2 }, true);
+    expect(line).toEqual({ finish: 300, bluff: 120, challenge: 80, eaten: -40, win: 150, total: 610 });
+    expect(scoreOf({ ...p, finished: 0, lost: 5 }, { bluffs: 0, bluffsPassed: 0, challenges: 0, challengesWon: 0 }, false).total).toBe(0);
+  });
+
+  it('기록이 없던 예전 판도 이어서 둘 수 있다', () => {
+    const old = createGame(['a', 'b']) as Partial<GameState> & GameState;
+    delete (old as Partial<GameState>).stats;
+    const s = play(toRespond(old, 2, 5), 1, { type: 'accept' }).state;
+    expect(s.stats[0]).toMatchObject({ bluffs: 1, bluffsPassed: 1 });
   });
 });
 
