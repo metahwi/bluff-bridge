@@ -9,9 +9,9 @@
     "not_found_handling": "single-page-application",
     "run_worker_first": ["/api/*", "/ws/*"]
   },
-  // database_id는 5단계(배포)에서 실제 D1 데이터베이스의 ID로 바꾼다. 로컬 실행에는 영향이 없다.
+  // 운영 D1 데이터베이스. 로컬 실행(wrangler dev)은 이 PC의 별도 파일을 쓰므로 운영 데이터를 건드리지 않는다.
   "d1_databases": [
-    { "binding": "DB", "database_name": "bluff-bridge", "database_id": "00000000-0000-0000-0000-000000000000" }
+    { "binding": "DB", "database_name": "bluff-bridge", "database_id": "736528c7-faf8-4075-a4d7-2db51d1f3549" }
   ],
   "durable_objects": {
     "bindings": [

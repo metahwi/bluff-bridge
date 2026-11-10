@@ -86,7 +86,9 @@ async function until(cond: () => boolean, what: string, ms = 10_000): Promise<vo
 }
 
 // 0. DB 테이블 준비 (.dev.vars의 ADMIN_TOKEN 사용)
-const adminToken = readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^ADMIN_TOKEN=(.+)$/m)?.[1];
+const adminToken =
+  process.env.ADMIN_TOKEN ??
+  readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^ADMIN_TOKEN=(.+)$/m)?.[1];
 const migrate = await fetch(`${base}/api/admin/migrate`, {
   method: 'POST',
   headers: { Authorization: `Bearer ${adminToken}` },
