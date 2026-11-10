@@ -163,6 +163,9 @@ export function App() {
           <button className="ghost" disabled={busy || !draft.trim()} onClick={createRoom}>
             친구와 하기 (방 만들기)
           </button>
+          <button className="ghost soon" disabled>
+            4인 대결 <span className="badge">Coming Soon</span>
+          </button>
           <label htmlFor="invite">초대받았나요?</label>
           <div className="row">
             <input
