@@ -86,6 +86,8 @@ await until(() => notTurn.errors.length === 1, '차례 아닌 행동 거절');
 // 5. 끝날 때까지 자동으로 둔다. 거짓말과 의심을 섞는다.
 let moves = 0;
 let challenges = 0;
+let claims = 0;
+let fives = 0;
 function autoplay(cl: Client) {
   let acted = -1;
   const step = (room: RoomView) => {
@@ -95,10 +97,12 @@ function autoplay(cl: Client) {
     moves++;
     if (g.phase === 'roll') send(cl, { t: 'act', action: { type: 'roll' } });
     else if (g.phase === 'claim') {
-      const lie = g.die === BLANK || moves % 3 === 0;
+      // 두 번에 한 번은 5라고 뻥친다.
+      const lie = g.die === BLANK || claims++ % 2 === 0;
       send(cl, { t: 'act', action: { type: 'claim', value: lie ? 5 : g.die! } });
     } else {
-      const doubt = g.claim === 5 && moves % 2 === 0;
+      // 5라는 선언은 두 번에 한 번 의심한다 (첫 번째는 반드시).
+      const doubt = g.claim === 5 && fives++ % 2 === 0;
       if (doubt) challenges++;
       send(cl, { t: 'act', action: { type: doubt ? 'challenge' : 'accept' } });
     }
