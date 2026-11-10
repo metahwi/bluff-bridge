@@ -3,6 +3,13 @@
   "name": "bluff-bridge",
   "main": "src/index.ts",
   "compatibility_date": "2026-10-01",
+  // 예전 주소(…workers.dev)도 살려 둔다. 들어오면 서버가 hamahama.net으로 넘겨준다.
+  "workers_dev": true,
+  // 운영 주소. www로 들어오면 서버가 hamahama.net으로 넘겨준다.
+  "routes": [
+    { "pattern": "hamahama.net", "custom_domain": true },
+    { "pattern": "www.hamahama.net", "custom_domain": true }
+  ],
   "assets": {
     "directory": "../web/dist",
     "binding": "ASSETS",

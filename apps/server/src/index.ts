@@ -25,6 +25,18 @@ export interface Env {
 
 const app = new Hono<{ Bindings: Env }>();
 
+// 운영에서는 대표 주소(BETTER_AUTH_URL) 하나로 모은다.
+// 예전 workers.dev 주소나 www로 들어오면 대표 주소의 같은 경로로 넘긴다(로그인은 대표 주소에서만 동작한다).
+app.use('*', async (c, next) => {
+  const canonical = c.env.BETTER_AUTH_URL;
+  if (canonical) {
+    const url = new URL(c.req.url);
+    const home = new URL(canonical);
+    if (url.host !== home.host) return c.redirect(home.origin + url.pathname + url.search, 301);
+  }
+  await next();
+});
+
 app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env, c.req.raw).handler(c.req.raw));
 
 /** 화면이 처음 뜰 때 필요한 정보: 내 계정, 전적, 켜져 있는 소셜 로그인. */
