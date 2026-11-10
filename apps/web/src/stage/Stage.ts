@@ -108,6 +108,8 @@ const LUNGE_Z = 1.5;
 export class Stage {
   onPhase: (phase: ChompPhase) => void = () => {};
   onLabels: (labels: StageLabel[]) => void = () => {};
+  /** 장면 속 움직임에 맞춰 낼 효과음. */
+  onSfx: (name: 'hop' | 'splash' | 'munch' | 'bone') => void = () => {};
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -389,6 +391,7 @@ export class Stage {
   }
 
   private hop(p: Pawn, from: THREE.Vector3, to: THREE.Vector3, delay: number, dur: number): void {
+    this.at(delay, () => this.onSfx('hop'));
     this.tween(delay, dur, (k) => {
       p.group.position.lerpVectors(from, to, k);
       p.group.position.y += Math.sin(k * Math.PI) * 0.55;
@@ -632,7 +635,10 @@ export class Stage {
     });
 
     // 하마가 물을 가르며 솟구쳐 입을 쩍 벌린다
-    this.at(T + 0.2, () => this.burst(new THREE.Vector3(HX,0.1, LUNGE_Z + 0.4), 38, ['#ffffff', '#d2f4fb', '#8fd6e6'], 3.4, 7, 0.17));
+    this.at(T + 0.2, () => {
+      this.onSfx('splash');
+      this.burst(new THREE.Vector3(HX, 0.1, LUNGE_Z + 0.4), 38, ['#ffffff', '#d2f4fb', '#8fd6e6'], 3.4, 7, 0.17);
+    });
     this.tween(T + 0.2, 0.3, (k) => {
       hr.position.y = lerp(peekY, 0.55, k);
       hr.rotation.x = -0.75 * k;
@@ -657,6 +663,7 @@ export class Stage {
       hr.rotation.x = -0.75 * (1 - k);
     }, easeIn);
     this.at(C + 0.52, () => {
+      this.onSfx('splash');
       this.burst(new THREE.Vector3(HX,0.1, LUNGE_Z + 0.6), 28, ['#ffffff', '#d2f4fb', '#e8a0a8'], 3.6, 5, 0.15);
       this.shake = 0.35;
     });
@@ -669,6 +676,7 @@ export class Stage {
       this.tween(W + n * 0.34, 0.17, (k) => (hippo.open = 0.32 * k), easeOut);
       this.tween(W + n * 0.34 + 0.17, 0.09, (k) => (hippo.open = 0.32 * (1 - k)), easeIn);
       this.at(W + n * 0.34 + 0.26, () => {
+        this.onSfx('munch');
         this.burst(new THREE.Vector3(HX,0.3, LUNGE_Z + 0.95), 10, ['#c1121f', '#e01e37'], 1.7, 3.2, 0.12);
         this.shake = 0.16;
       });
@@ -678,6 +686,7 @@ export class Stage {
     const B = W + 1.15;
     this.at(B, () => {
       this.onPhase('burp');
+      this.onSfx('bone');
       this.bone.visible = true;
     });
     this.tween(B, 0.14, (k) => (hippo.open = 0.6 * k), easeOut);

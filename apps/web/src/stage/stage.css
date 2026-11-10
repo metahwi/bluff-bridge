@@ -1,3 +1,7 @@
+/* 소리 켜기/끄기: 화면 오른쪽 위에 고정 */
+.soundToggle { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 20; }
+.soundToggle[aria-pressed='false'] { background: var(--paper-dark); color: var(--dirt-dark); }
+
 /* 3D 게임판과 그 위에 얹는 글자. */
 .stage {
   position: relative;

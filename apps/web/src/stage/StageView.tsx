@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode } from 'react';
 import { Die } from '../pixel.tsx';
+import { sound } from '../sound.ts';
 import { Stage } from './Stage.ts';
 import type { ChompPhase, StageLabel, StageState } from './Stage.ts';
 
@@ -37,6 +38,8 @@ export function StageView({
   const played = useRef(-1);
   const done = useRef(onCueDone);
   done.current = onCueDone;
+  const truth = useRef(false);
+  if (cue) truth.current = cue.truth;
 
   useEffect(() => {
     if (!canvas.current) return;
@@ -50,7 +53,19 @@ export function StageView({
     stage.current = s;
     if (import.meta.env.DEV) (window as unknown as { __stage?: Stage }).__stage = s; // 디자인 작업용
     s.onLabels = setLabels;
-    s.onPhase = setPhase;
+    s.onSfx = (name) => sound.play(name);
+    s.onPhase = (p) => {
+      setPhase(p);
+      // 연출 단계에 맞춘 소리. 연출 동안에는 배경 음악을 줄인다.
+      if (p === 'suspense') {
+        sound.duck(true);
+        sound.play('suspense');
+      } else if (p === 'reveal') sound.play(truth.current ? 'truth' : 'lie');
+      else if (p === 'fall') sound.play('whoosh');
+      else if (p === 'chomp') sound.play('crunch');
+      else if (p === 'burp') setTimeout(() => sound.play('burp'), 300);
+      else if (p === 'done') sound.duck(false);
+    };
     const observer = new ResizeObserver(() => s.resize());
     observer.observe(canvas.current);
     return () => {

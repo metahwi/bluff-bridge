@@ -3,6 +3,7 @@ import { BLANK } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
+import { sound } from './sound.ts';
 import { StageView } from './stage/StageView.tsx';
 import type { ChompCue } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
@@ -86,7 +87,14 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
     return myTurn ? (
       <>
         <h2>내 차례예요.</h2>
-        <button onClick={() => send({ t: 'act', action: { type: 'roll' } })}>주사위 굴리기</button>
+        <button
+          onClick={() => {
+            sound.play('roll');
+            send({ t: 'act', action: { type: 'roll' } });
+          }}
+        >
+          주사위 굴리기
+        </button>
       </>
     ) : (
       <h2>{name(game.turn)}가 주사위를 굴리는 중…</h2>
@@ -182,6 +190,13 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   useEffect(() => {
     if (room?.status === 'lobby') setLog([]);
   }, [room?.status]);
+
+  // 승패가 화면에 드러나는 순간(추락 연출이 있었다면 그 뒤)에 짧은 음악을 낸다.
+  const resultShown = room?.status === 'over' && !cue;
+  const iWon = room?.game?.winner === room?.me;
+  useEffect(() => {
+    if (resultShown) sound.play(iWon ? 'win' : 'lose');
+  }, [resultShown, iWon]);
 
   // 무대에 넘길 상태. 내용이 같으면 같은 객체를 유지해 무대가 불필요하게 다시 그리지 않게 한다.
   const game = room?.game ?? null;
