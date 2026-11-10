@@ -183,7 +183,7 @@ check(recA.recent[0]?.opponents === '비' && recB.recent[0]?.opponents === '에�
 a.onState = b.onState = () => {};
 send(a, { t: 'rematch' });
 send(b, { t: 'rematch' });
-await until(() => a.room?.status === 'playing', '다시 하기');
+await until(() => a.room?.status === 'playing' && b.room?.status === 'playing', '다시 하기');
 
 // 7. 게임 중 나가면 상대가 이긴다
 send(a, { t: 'leave' });
@@ -196,25 +196,27 @@ check(afterForfeit.played === 2 && afterForfeit.recent[0]?.reason === 'forfeit' 
 b.ws.close();
 
 // 8. 빠른 매칭: 두 명이 대기열에 서면 같은 방 코드를 받고, 준비 없이 바로 시작한다
-function queue(cookie: string): Promise<MatchMessage[]> {
-  return new Promise((resolve, reject) => {
-    const got: MatchMessage[] = [];
+/** got: 지금까지 받은 메시지, done: 연결이 닫힐 때 끝나는 약속. */
+function queue(cookie: string): { got: MatchMessage[]; done: Promise<MatchMessage[]> } {
+  const got: MatchMessage[] = [];
+  const done = new Promise<MatchMessage[]>((resolve, reject) => {
     const ws = new WebSocket(`${wsBase}/ws/match`, { headers: { Cookie: cookie, Origin: base } } as never);
     ws.onmessage = (e) => got.push(JSON.parse(String(e.data)) as MatchMessage);
     ws.onclose = () => resolve(got);
     ws.onerror = () => reject(new Error('대기열 접속 실패'));
   });
+  return { got, done };
 }
-const noLogin = await queue('').then(
+const noLogin = await queue('').done.then(
   () => true,
   () => false,
 );
 check(!noLogin, '로그인 없이 대기열에 접속됨');
 
 const [cookieX, cookieY, cookieZ] = [await guest('엑스'), await guest('와이'), await guest('제트')];
-const waitX = queue(cookieX);
-await sleep(300); // X가 먼저 줄을 서게 한다
-const [gotX, gotY] = await Promise.all([waitX, queue(cookieY)]);
+const queueX = queue(cookieX);
+await until(() => queueX.got.length > 0, 'X가 대기열에 섬'); // X가 줄을 선 것을 확인한 뒤 Y를 보낸다
+const [gotX, gotY] = await Promise.all([queueX.done, queue(cookieY).done]);
 const matchedX = gotX.find((m) => m.t === 'matched');
 const matchedY = gotY.find((m) => m.t === 'matched');
 check(gotX[0]?.t === 'waiting', '먼저 온 사람이 대기 안내를 받지 못함');
