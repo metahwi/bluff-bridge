@@ -104,3 +104,5 @@ header { display: flex; justify-content: space-between; align-items: center; gap
 .records li small { margin-left: auto; text-align: right; }
 .records .win { color: var(--accent); }
 .records .loss { color: var(--danger); }
+
+.notice { margin: 0; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--danger); color: var(--danger); font-weight: 600; }

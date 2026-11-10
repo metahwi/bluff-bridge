@@ -36,7 +36,7 @@ function describe(e: GameEvent, g: PlayerView): string | null {
     case 'out':
       return `${n(e.player)}의 말이 모두 떨어졌어요.`;
     case 'forfeit':
-      return `${n(e.player)}가 나갔어요.`;
+      return `${n(e.player)} 님이 기권했어요.`;
     default:
       return null;
   }
@@ -237,6 +237,9 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const game = room.game;
   const me = room.seats[room.me];
   const winner = game?.winner ?? null;
+  // 상대가 나가거나 접속이 끊겨 끝난 판이면 결과 화면에 따로 알린다.
+  const forfeitEvent = room.status === 'over' ? room.events.find((e) => e.type === 'forfeit') : undefined;
+  const forfeiter = forfeitEvent?.type === 'forfeit' ? forfeitEvent.player : null;
 
   // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
@@ -299,11 +302,22 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
               <>
                 <Countdown deadline={deadline} />
                 <Actions room={room} game={game} send={send} />
-                {room.seats.some((s) => !s.online) && <small>상대의 접속이 끊겼어요. 잠시 기다리는 중…</small>}
+                {room.seats.some((s) => !s.online) && (
+                  <p className="notice" role="status">
+                    상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
+                  </p>
+                )}
               </>
             ) : (
               <>
                 <h2>{winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}</h2>
+                {forfeiter !== null && (
+                  <p className="notice" role="status">
+                    {forfeiter === room.me
+                      ? '내가 기권해서 패배로 기록됐어요.'
+                      : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
+                  </p>
+                )}
                 <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
                   {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
                 </button>
