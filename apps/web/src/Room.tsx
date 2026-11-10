@@ -238,7 +238,9 @@ export function Room({ code, name, onExit }: { code: string; name: string; onExi
   const me = room.seats[room.me];
   const winner = game?.winner ?? null;
 
+  // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
+    <>
     <main className="room" inert={reveal || confirmLeave ? true : undefined}>
       <header>
         <span>
@@ -311,6 +313,7 @@ export function Room({ code, name, onExit }: { code: string; name: string; onExi
           </section>
         </>
       )}
+    </main>
 
       {reveal && game && <Reveal event={reveal} game={game} onDone={() => setReveal(null)} />}
       {confirmLeave && (
@@ -327,6 +330,6 @@ export function Room({ code, name, onExit }: { code: string; name: string; onExi
           </div>
         </div>
       )}
-    </main>
+    </>
   );
 }
