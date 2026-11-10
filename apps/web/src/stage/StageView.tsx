@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react';
-import type { ReactNode } from 'react';
+import type { ReactNode, RefObject } from 'react';
 import { Die } from '../pixel.tsx';
 import { sound } from '../sound.ts';
 import { Stage } from './Stage.ts';
@@ -17,18 +17,27 @@ export interface ChompCue {
   victimName: string;
 }
 
+export interface StageControls {
+  /** 주사위 힘을 모으는 중(0~1). null이면 멈춘다. */
+  charge(power: number | null): void;
+  throwDice(power: number): void;
+}
+
 /** 3D 게임판 + 그 위에 얹는 글자(번호, 표지판, 연출 자막). */
 export function StageView({
   state,
   cue,
   onCueDone,
   children,
+  controls,
 }: {
   state: StageState;
   cue?: ChompCue | null;
   onCueDone?: () => void;
   /** 무대 위에 얹을 것(첫 화면의 로고 등). 연출 중에는 숨긴다. */
   children?: ReactNode;
+  /** 주사위를 직접 조작하려는 쪽(던지기 단추)이 받아 갈 손잡이. */
+  controls?: RefObject<StageControls | null>;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const stage = useRef<Stage | null>(null);
@@ -51,6 +60,7 @@ export function StageView({
       return;
     }
     stage.current = s;
+    if (controls) controls.current = { charge: (p) => s.chargeDice(p), throwDice: (p) => s.throwDice(p) };
     if (import.meta.env.DEV) (window as unknown as { __stage?: Stage }).__stage = s; // 디자인 작업용
     s.onLabels = setLabels;
     s.onSfx = (name) => sound.play(name);

@@ -1,15 +1,22 @@
 import { useEffect, useMemo, useRef, useState } from 'react';
+import type { RefObject } from 'react';
 import { BLANK } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
 import { sound } from './sound.ts';
+import { SoundControl } from './SoundToggle.tsx';
+import { ThrowButton } from './ThrowButton.tsx';
 import { StageView } from './stage/StageView.tsx';
-import type { ChompCue } from './stage/StageView.tsx';
+import type { ChompCue, StageControls } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
+import type { DiceState } from './stage/dice.ts';
 import { useRoom } from './useRoom.ts';
 
 type Challenged = Extract<GameEvent, { type: 'challenged' }>;
+
+/** 주사위가 쟁반 위에서 구르다 멈출 때까지 기다리는 시간. 그 전에 눈을 글자로 먼저 보여 주지 않는다. */
+const DICE_SETTLE_MS = 1700;
 
 const face = (die: number | null) => (die === null ? '?' : die === BLANK ? '꽝' : String(die));
 
@@ -78,28 +85,46 @@ function Plates({ game, me }: { game: PlayerView; me: number }) {
   );
 }
 
-function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send: ReturnType<typeof useRoom>['send'] }) {
+function Actions({
+  room,
+  game,
+  send,
+  controls,
+  settled,
+}: {
+  room: RoomView;
+  game: PlayerView;
+  send: ReturnType<typeof useRoom>['send'];
+  controls: RefObject<StageControls | null>;
+  /** 방금 던진 주사위가 멈췄는지. */
+  settled: boolean;
+}) {
   const me = room.me;
   const myTurn = game.turn === me;
   const name = (i: number) => game.players[i]?.name ?? '?';
+  /** 이번 턴에 이미 던졌는지(서버 응답을 기다리는 짧은 동안 단추를 잠근다). */
+  const [thrownRound, setThrownRound] = useState(-1);
 
   if (game.phase === 'roll') {
     return myTurn ? (
       <>
         <h2>내 차례예요.</h2>
-        <button
-          onClick={() => {
-            sound.play('roll');
+        <ThrowButton
+          disabled={thrownRound === game.round}
+          onCharge={(p) => controls.current?.charge(p)}
+          onThrow={(p) => {
+            setThrownRound(game.round);
+            controls.current?.throwDice(p);
             send({ t: 'act', action: { type: 'roll' } });
           }}
-        >
-          주사위 굴리기
-        </button>
+        />
       </>
     ) : (
-      <h2>{name(game.turn)}가 주사위를 굴리는 중…</h2>
+      <h2>{name(game.turn)}가 주사위를 던지려는 중…</h2>
     );
   }
+
+  if (!settled) return <h2>주사위가 구르는 중…</h2>;
 
   if (game.phase === 'claim') {
     if (!myTurn) return <h2>{name(game.turn)}가 선언할 숫자를 고르는 중…</h2>;
@@ -162,7 +187,10 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const [log, setLog] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
+  const [settled, setSettled] = useState(true);
   const seenSeq = useRef(-1);
+  const controls = useRef<StageControls | null>(null);
+  const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
   // 새 상태(seq)가 올 때마다 한 번만 기록과 연출을 처리한다.
   useEffect(() => {
@@ -172,7 +200,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     const game = room.game;
     if (!game || first) return;
     const lines = room.events.flatMap((e) => describe(e, game) ?? []);
-    if (lines.length) setLog((l) => [...lines.reverse(), ...l].slice(0, 12));
+    if (lines.length) setLog((l) => [...lines.reverse(), ...l].slice(0, 40));
     const hit = room.events.find((e): e is Challenged => e.type === 'challenged');
     if (hit) {
       setCue({
@@ -185,7 +213,14 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         victimName: game.players[hit.fallen]?.name ?? '?',
       });
     }
+    // 방금 주사위가 던져졌으면 멈출 때까지 잠깐 기다린다.
+    if (room.events.some((e) => e.type === 'rolled')) {
+      setSettled(false);
+      clearTimeout(settleTimer.current);
+      settleTimer.current = setTimeout(() => setSettled(true), DICE_SETTLE_MS);
+    }
   }, [room]);
+  useEffect(() => () => clearTimeout(settleTimer.current), []);
 
   useEffect(() => {
     if (room?.status === 'lobby') setLog([]);
@@ -200,18 +235,26 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
 
   // 무대에 넘길 상태. 내용이 같으면 같은 객체를 유지해 무대가 불필요하게 다시 그리지 않게 한다.
   const game = room?.game ?? null;
+  const playing = room?.status === 'playing';
+  const dice: DiceState =
+    !game || !playing
+      ? { mode: 'hidden', face: null }
+      : game.phase === 'roll'
+        ? { mode: 'ready', face: null }
+        : { mode: 'shown', face: game.turn === room?.me ? game.die : null };
   const stageKey = JSON.stringify(
     game && room?.status !== 'lobby'
-      ? [game.rules.bridgeLength, game.players.map((p) => [p.pos, p.reserve, p.finished]), room?.status === 'playing' ? game.turn : null]
-      : [10, (room?.seats ?? []).map(() => [0, 0, 0]), null],
+      ? [game.rules.bridgeLength, game.players.map((p) => [p.pos, p.reserve, p.finished]), playing ? game.turn : null, dice]
+      : [10, (room?.seats ?? []).map(() => [0, 0, 0]), null, dice],
   );
   const stageState = useMemo<StageState>(() => {
-    const [length, players, active] = JSON.parse(stageKey) as [number, [number | null, number, number][], number | null];
+    const [length, players, active, d] = JSON.parse(stageKey) as [number, [number | null, number, number][], number | null, DiceState];
     return {
       length,
       pawns: players.map((p) => p[0]),
       crowd: players.map((p) => ({ reserve: p[1], finished: p[2] })),
       active,
+      dice: d,
     };
   }, [stageKey]);
 
@@ -258,6 +301,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const forfeitEvent = room.status === 'over' ? room.events.find((e) => e.type === 'forfeit') : undefined;
   const forfeiter = forfeitEvent?.type === 'forfeit' ? forfeitEvent.player : null;
 
+  // 넓은 화면: 왼쪽에 게임판, 오른쪽에 점수·행동·기록. 좁은 화면: 위에서 아래로 쌓는다(순서는 CSS에서 정한다).
   // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
     <>
@@ -268,6 +312,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
           </span>
           <span className="row">
+            <SoundControl />
             {!room.auto && (
               <button className="ghost small" onClick={copyLink}>
                 {copied ? '복사됨' : '초대 링크 복사'}
@@ -282,89 +327,95 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
           </span>
         </header>
 
-        {inGame && <Plates game={game} me={room.me} />}
-        <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} />
+        <div className="board">
+          <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} controls={controls} />
+        </div>
 
-        {room.status === 'lobby' && (
-          <section className="panel">
-            <h2>
-              {room.auto
-                ? '상대가 들어오는 중…'
-                : room.seats.length < 2
-                  ? '친구를 기다리는 중…'
-                  : '둘 다 준비하면 시작해요.'}
-            </h2>
-            <ul className="seats">
-              {[0, 1].map((i) => {
-                const s = room.seats[i];
-                return (
-                  <li key={i}>
-                    <Pawn player={i} scale={2} />
-                    {s ? s.name : '빈자리'}
-                    {i === room.me && <small> (나)</small>}
-                    <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
-                  </li>
-                );
-              })}
-            </ul>
-            {room.auto ? (
-              <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
-            ) : (
-              <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
-                {me?.ready ? '준비 취소' : '준비 완료'}
-              </button>
-            )}
-          </section>
-        )}
+        <aside className="side">
+          {inGame && <Plates game={game} me={room.me} />}
 
-        {inGame && (
-          <>
-            {/* 추락 연출이 끝날 때까지는 결과와 다음 행동을 가려 둔다(연출보다 먼저 결말이 보이지 않게). */}
-            <section className="panel" aria-live="polite" inert={cue ? true : undefined}>
-              {cue ? (
-                <h2>하마가 입맛을 다시는 중…</h2>
-              ) : room.status === 'playing' ? (
-                <>
-                  <Countdown deadline={deadline} />
-                  <Actions room={room} game={game} send={send} />
-                  {room.seats.some((s) => !s.online) && (
-                    <p className="notice" role="status">
-                      상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
-                    </p>
-                  )}
-                </>
+          {room.status === 'lobby' && (
+            <section className="panel">
+              <h2>
+                {room.auto
+                  ? '상대가 들어오는 중…'
+                  : room.seats.length < 2
+                    ? '친구를 기다리는 중…'
+                    : '둘 다 준비하면 시작해요.'}
+              </h2>
+              <ul className="seats">
+                {[0, 1].map((i) => {
+                  const s = room.seats[i];
+                  return (
+                    <li key={i}>
+                      <Pawn player={i} scale={2} />
+                      {s ? s.name : '빈자리'}
+                      {i === room.me && <small> (나)</small>}
+                      <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
+                    </li>
+                  );
+                })}
+              </ul>
+              {room.auto ? (
+                <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
               ) : (
-                <>
-                  <h2 className="result">
-                    {winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}
-                  </h2>
-                  {forfeiter !== null && (
-                    <p className="notice" role="status">
-                      {forfeiter === room.me
-                        ? '내가 기권해서 패배로 기록됐어요.'
-                        : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
-                    </p>
-                  )}
-                  <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
-                    {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
-                  </button>
-                </>
-              )}
-              {error && (
-                <p className="error" role="alert">
-                  {error}
-                </p>
+                <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
+                  {me?.ready ? '준비 취소' : '준비 완료'}
+                </button>
               )}
             </section>
-            {log.length > 0 && !cue && (
-              <section className="log">
-                {log.map((line, i) => (
-                  <p key={log.length - i}>{line}</p>
-                ))}
+          )}
+
+          {inGame && (
+            <>
+              {/* 추락 연출이 끝날 때까지는 결과와 다음 행동을 가려 둔다(연출보다 먼저 결말이 보이지 않게). */}
+              <section className="panel actions" aria-live="polite" inert={cue ? true : undefined}>
+                {cue ? (
+                  <h2>하마가 입맛을 다시는 중…</h2>
+                ) : room.status === 'playing' ? (
+                  <>
+                    <Countdown deadline={deadline} />
+                    <Actions room={room} game={game} send={send} controls={controls} settled={settled} />
+                    {room.seats.some((s) => !s.online) && (
+                      <p className="notice" role="status">
+                        상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
+                      </p>
+                    )}
+                  </>
+                ) : (
+                  <>
+                    <h2 className="result">
+                      {winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}
+                    </h2>
+                    {forfeiter !== null && (
+                      <p className="notice" role="status">
+                        {forfeiter === room.me
+                          ? '내가 기권해서 패배로 기록됐어요.'
+                          : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
+                      </p>
+                    )}
+                    <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
+                      {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
+                    </button>
+                  </>
+                )}
+                {error && (
+                  <p className="error" role="alert">
+                    {error}
+                  </p>
+                )}
               </section>
-            )}
-          </>
-        )}
+              <section className="log" aria-label="기록">
+                <h3>기록</h3>
+                {/* 연출 중에는 방금 일어난 일(첫 줄)을 가려 결말이 먼저 보이지 않게 한다. */}
+                {(cue ? log.slice(1) : log).map((line, i, shown) => (
+                  <p key={shown.length - i}>{line}</p>
+                ))}
+                {log.length === 0 && <p className="empty">아직 아무 일도 없어요.</p>}
+              </section>
+            </>
+          )}
+        </aside>
       </main>
 
       {confirmLeave && (

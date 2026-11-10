@@ -28,12 +28,15 @@ function toRespond(state: GameState, face: number, claim: number): GameState {
   return s;
 }
 
+/** 시작할 때 출발 지점에 한 개를 올리고 남는 대기 말 수. */
+const RESERVE = RULES.runners - 1;
+
 describe('시작', () => {
   it('각자 말 하나를 출발 지점에 올리고 나머지는 대기', () => {
     const s = createGame(['a', 'b']);
     expect(s.players.map((p) => [p.pos, p.reserve])).toEqual([
-      [0, 4],
-      [0, 4],
+      [0, RESERVE],
+      [0, RESERVE],
     ]);
     expect([s.phase, s.turn, s.responder]).toEqual(['roll', 0, 1]);
   });
@@ -82,15 +85,15 @@ describe('믿기', () => {
 describe('의심하기', () => {
   it('거짓말이면 굴린 사람의 말이 추락하고 이동은 없다', () => {
     const { state, events } = play(toRespond(createGame(['a', 'b']), 2, 5), 1, { type: 'challenge' });
-    expect(state.players[0]).toMatchObject({ pos: 0, reserve: 3, lost: 1 });
-    expect(state.players[1]).toMatchObject({ pos: 0, reserve: 4, lost: 0 });
+    expect(state.players[0]).toMatchObject({ pos: 0, reserve: RESERVE - 1, lost: 1 });
+    expect(state.players[1]).toMatchObject({ pos: 0, reserve: RESERVE, lost: 0 });
     expect(events[0]).toMatchObject({ type: 'challenged', die: 2, claim: 5, truth: false, fallen: 0 });
   });
 
   it('진실이면 의심한 사람의 말이 추락하고 굴린 사람은 전진', () => {
     const { state, events } = play(toRespond(createGame(['a', 'b']), 4, 4), 1, { type: 'challenge' });
     expect(state.players[0]).toMatchObject({ pos: 4, lost: 0 });
-    expect(state.players[1]).toMatchObject({ pos: 0, reserve: 3, lost: 1 });
+    expect(state.players[1]).toMatchObject({ pos: 0, reserve: RESERVE - 1, lost: 1 });
     expect(events[0]).toMatchObject({ truth: true, fallen: 1 });
   });
 
@@ -107,7 +110,7 @@ describe('완주와 승패', () => {
     const s0 = createGame(['a', 'b']);
     s0.players[0]!.pos = 8;
     const { state, events } = play(toRespond(s0, 3, 3), 1, { type: 'accept' });
-    expect(state.players[0]).toMatchObject({ finished: 1, pos: 0, reserve: 3 });
+    expect(state.players[0]).toMatchObject({ finished: 1, pos: 0, reserve: RESERVE - 1 });
     expect(events.some((e) => e.type === 'finished')).toBe(true);
   });
 
@@ -118,9 +121,9 @@ describe('완주와 승패', () => {
     expect(s.players[0]).toMatchObject({ finished: 0, pos: 10 });
   });
 
-  it('2개를 완주하면 승리', () => {
+  it('정해진 수만큼 완주하면 승리', () => {
     const s0 = createGame(['a', 'b']);
-    Object.assign(s0.players[0]!, { pos: 9, finished: 1 });
+    Object.assign(s0.players[0]!, { pos: 9, finished: RULES.finishesToWin - 1 });
     const { state, events } = play(toRespond(s0, 2, 2), 1, { type: 'accept' });
     expect([state.phase, state.winner]).toEqual(['over', 0]);
     expect(events.at(-1)).toEqual({ type: 'over', winner: 0 });

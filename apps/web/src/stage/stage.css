@@ -1,6 +1,54 @@
-/* 소리 켜기/끄기: 화면 오른쪽 위에 고정 */
-.soundToggle { position: fixed; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 20; }
-.soundToggle[aria-pressed='false'] { background: var(--paper-dark); color: var(--dirt-dark); }
+/* 소리: 켜기/끄기 단추 + 음량 막대 */
+.soundControl { display: inline-flex; align-items: center; gap: 6px; }
+.soundControl.floating { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 5; padding: 4px 6px; background: var(--paper); border: 3px solid var(--ink); }
+.soundControl button[aria-pressed='false'] { background: var(--paper-dark); color: var(--dirt-dark); }
+.soundControl input[type='range'] { appearance: none; width: 84px; min-height: 0; height: 12px; padding: 0; background: #fffaf0; border: 3px solid var(--ink); box-shadow: none; cursor: pointer; }
+.soundControl input[type='range']::-webkit-slider-thumb { appearance: none; width: 12px; height: 20px; background: var(--gold); border: 3px solid var(--ink); }
+.soundControl input[type='range']::-moz-range-thumb { width: 8px; height: 14px; border-radius: 0; background: var(--gold); border: 3px solid var(--ink); }
+
+/* 휴대폰: 머리말이 한두 줄에 들어오게 줄인다 */
+@media (max-width: 520px) {
+  main.room > header { padding: 4px 6px; gap: 4px; }
+  main.room > header .row { gap: 4px; justify-content: flex-end; }
+  main.room > header button.small { padding: 2px 6px; min-height: 32px; }
+  .soundControl input[type='range'] { width: 52px; }
+  .plate { padding: 6px 8px; }
+  .plate dl { gap: 2px 8px; margin-top: 2px; }
+}
+
+/* ───── 게임 방 배치 ───── */
+/* 좁은 화면: 위에서 아래로 쌓는다. 점수판 → 게임판 → 행동 → 기록 */
+main.room { display: flex; flex-direction: column; }
+.side { display: contents; }
+main.room > header { order: 0; }
+.plates { order: 1; }
+.board { order: 2; }
+.side > .panel { order: 3; }
+.log { order: 4; max-height: 9.5em; overflow-y: auto; }
+.log h3 { margin: 0 0 4px; font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); }
+.log .empty { color: var(--dirt-dark); font-weight: 400; }
+.board .stage { aspect-ratio: 5 / 4; }
+
+/* 넓은 화면: 왼쪽에 게임판을 가로로 넓게, 오른쪽에 점수·행동·기록. 한 화면에 다 들어와 스크롤이 없다. */
+@media (min-width: 980px) {
+  main.room { display: grid; grid-template-columns: minmax(0, 1fr) 340px; grid-template-rows: auto minmax(0, 1fr); max-width: 1680px; height: 100dvh; }
+  main.room > header { grid-column: 1 / -1; }
+  .board { grid-column: 1; grid-row: 2; min-height: 0; }
+  .board .stage { height: 100%; aspect-ratio: auto; max-height: none; }
+  .side { grid-column: 2; grid-row: 2; display: flex; flex-direction: column; gap: 12px; min-height: 0; }
+  .side .plates { grid-template-columns: 1fr; }
+  .side .log { flex: 1; min-height: 80px; max-height: none; }
+}
+
+/* 주사위 던지기: 힘 게이지와 꾹 누르는 단추 */
+.throw { display: flex; flex-direction: column; gap: 8px; width: 100%; align-items: stretch; }
+.gauge { height: 18px; background: #fffaf0; border: 3px solid var(--ink); box-shadow: inset 3px 3px 0 rgb(58 36 20 / 0.12); overflow: hidden; }
+.gauge i { display: block; height: 100%; transform: scaleX(0); transform-origin: 0 50%; background: linear-gradient(90deg, #7cc25b 0 45%, var(--gold) 45% 85%, var(--red) 85%); }
+.gauge.live { box-shadow: 0 0 0 3px var(--gold); }
+.throw button { min-height: 56px; font-size: 18px; touch-action: none; user-select: none; -webkit-user-select: none; }
+.throw button.held { transform: translateY(3px); background: #ffd465; box-shadow: inset -3px -3px 0 var(--gold-dark); }
+
+/* 3D 게임판과 그 위에 얹는 글자. */
 
 /* 3D 게임판과 그 위에 얹는 글자. */
 .stage {
@@ -16,6 +64,7 @@
 /* 세로로 긴 휴대폰에서는 판을 더 높게 써서 강과 하마가 더 많이 보이게 한다 */
 @media (max-width: 520px) {
   .stage { aspect-ratio: 1 / 1; }
+  .board .stage { aspect-ratio: 1 / 1; }
 }
 .stage canvas { display: block; width: 100%; height: 100%; image-rendering: pixelated; }
 .stageFallback { position: absolute; inset: 0; display: grid; place-items: center; padding: 16px; text-align: center; background: var(--paper); }

@@ -39,19 +39,16 @@ function run(label: string, playerCount: number, rules: Rules, games: number): v
   const pct = (n: number) => ((100 * n) / games).toFixed(1) + '%';
   console.log(
     `${label.padEnd(34)} 평균 ${(rounds / games).toFixed(1)}턴 (최장 ${maxRounds}) | ` +
-      `순서별 승률 ${wins.map(pct).join(' / ')} | 탈락으로 끝난 판 ${pct(byElimination)}`,
+      `순서별 승률 ${wins.map(pct).join(' / ')} | 완주 수를 못 채우고 끝난 판 ${pct(byElimination)}`,
   );
 }
 
 const games = Number(process.argv[2] ?? 20000);
 console.log(`${games}판씩 시뮬레이션\n`);
 
-run('2인 · 기본 규칙', 2, RULES, games);
-run('4인 · 기본 규칙', 4, RULES, games);
-for (const bridgeLength of [8, 12]) {
-  run(`2인 · 다리 ${bridgeLength}칸`, 2, { ...RULES, bridgeLength }, games);
+run(`2인 · 현재 규칙 (말 ${RULES.runners}, 완주 ${RULES.finishesToWin})`, 2, RULES, games);
+run('4인 · 현재 규칙', 4, RULES, games);
+for (const runners of [5, 6, 7, 8]) {
+  run(`2인 · 완주 3 · 말 ${runners}개`, 2, { ...RULES, finishesToWin: 3, runners }, games);
 }
-for (const runners of [4, 6]) {
-  run(`2인 · 말 ${runners}개`, 2, { ...RULES, runners }, games);
-}
-run('2인 · 3개 완주', 2, { ...RULES, finishesToWin: 3, runners: 6 }, games);
+run('2인 · 완주 2 · 말 5개 (예전)', 2, { ...RULES, finishesToWin: 2, runners: 5 }, games);

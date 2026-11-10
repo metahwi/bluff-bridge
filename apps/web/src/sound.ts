@@ -4,6 +4,9 @@
 export type Sfx =
   | 'hop'
   | 'roll'
+  | 'throw'
+  | 'dice'
+  | 'cup'
   | 'suspense'
   | 'lie'
   | 'truth'
@@ -42,6 +45,7 @@ const BASS = ['C3 G3 C3 G3', 'A2 E3 A2 E3', 'F2 C3 F2 C3', 'G2 D3 G2 D3', 'C3 G3
 const STEP = 60 / 116 / 2; // 8분음표 하나의 길이(초). 빠르기 116.
 
 const STORAGE_KEY = 'hama:sound';
+const VOLUME_KEY = 'hama:volume';
 
 class Sound {
   private ctx: AudioContext | null = null;
@@ -52,11 +56,16 @@ class Sound {
   private nextTime = 0;
   private noiseBuffer: AudioBuffer | null = null;
   private listeners = new Set<() => void>();
+  private master: GainNode | null = null;
   enabled = true;
+  /** 전체 음량 0~1. */
+  volume = 0.7;
 
   constructor() {
     try {
       this.enabled = localStorage.getItem(STORAGE_KEY) !== 'off';
+      const saved = Number(localStorage.getItem(VOLUME_KEY) ?? NaN);
+      if (saved >= 0 && saved <= 1) this.volume = saved;
     } catch {
       // 저장소를 못 쓰면 기본값(켬)
     }
@@ -89,6 +98,25 @@ class Sound {
     for (const fn of this.listeners) fn();
   }
 
+  setVolume(v: number): void {
+    this.volume = Math.min(1, Math.max(0, v));
+    try {
+      localStorage.setItem(VOLUME_KEY, String(this.volume));
+    } catch {
+      // 무시
+    }
+    if (this.ctx && this.master) this.master.gain.setTargetAtTime(this.volume ** 2, this.ctx.currentTime, 0.03);
+    if (this.volume > 0 && !this.enabled) return this.setEnabled(true); // 끈 상태에서 올리면 켠다
+    for (const fn of this.listeners) fn();
+  }
+
+  /** 주사위 힘을 모으는 동안 나는 소리. 힘이 셀수록 높은 음. */
+  charge(power: number): void {
+    const ctx = this.ctx;
+    if (!ctx || !this.fx || !this.enabled || ctx.state !== 'running') return;
+    this.tone(ctx, this.fx, 'square', 260 + power * 900, ctx.currentTime + 0.005, 0.045, 0.09);
+  }
+
   /** 사용자의 첫 입력 때 호출된다. 오디오를 만들고 음악을 시작한다. */
   private unlock(): void {
     if (!this.enabled) return;
@@ -109,12 +137,16 @@ class Sound {
     limiter.threshold.value = -12;
     limiter.ratio.value = 8;
     limiter.connect(ctx.destination);
+    // 전체 음량(사용자가 조절). 귀에 들리는 크기는 제곱에 가깝게 느껴져서 값을 제곱해 쓴다.
+    this.master = ctx.createGain();
+    this.master.gain.value = this.volume ** 2;
+    this.master.connect(limiter);
     this.music = ctx.createGain();
     this.music.gain.value = 0.5;
-    this.music.connect(limiter);
+    this.music.connect(this.master);
     this.fx = ctx.createGain();
     this.fx.gain.value = 1.4;
-    this.fx.connect(limiter);
+    this.fx.connect(this.master);
 
     const buffer = ctx.createBuffer(1, ctx.sampleRate, ctx.sampleRate);
     const data = buffer.getChannelData(0);
@@ -197,6 +229,18 @@ class Sound {
       case 'roll':
         for (let i = 0; i < 6; i++) this.hiss(ctx, out, t + i * 0.055 + Math.random() * 0.02, 0.035, 0.35, 'bandpass', 1800 + Math.random() * 2600);
         break;
+      case 'throw':
+        this.tone(ctx, out, 'sine', 300, t, 0.22, 0.3, 1100);
+        break;
+      case 'dice':
+        // 주사위가 나무판에 부딪히는 소리
+        this.hiss(ctx, out, t, 0.04, 0.6, 'bandpass', 2400 + Math.random() * 1200);
+        this.tone(ctx, out, 'triangle', 420 + Math.random() * 160, t, 0.05, 0.25, 200);
+        break;
+      case 'cup':
+        this.tone(ctx, out, 'sine', 160, t, 0.16, 0.6, 60);
+        this.hiss(ctx, out, t, 0.05, 0.4, 'lowpass', 900);
+        break;
       case 'suspense':
         // 점점 빨라지는 심장 소리
         for (let i = 0, at = 0; i < 9; i++, at += 0.2 - i * 0.014) this.tone(ctx, out, 'sine', 110, t + at, 0.11, 0.5, 55);
@@ -272,7 +316,7 @@ class Sound {
   async measure(what: 'music' | Sfx): Promise<{ peak: number; rms: number; seconds: number }> {
     const seconds = what === 'music' ? STEP * 64 : 1.5;
     const ctx = new OfflineAudioContext(1, Math.ceil(44100 * seconds), 44100);
-    const saved = { music: this.music, fx: this.fx, noise: this.noiseBuffer };
+    const saved = { music: this.music, fx: this.fx, noise: this.noiseBuffer, master: this.master };
     this.build(ctx);
     if (what === 'music') for (let i = 0; i < 64; i++) this.playStep(ctx, this.music!, i, i * STEP);
     else this.render(ctx, this.fx!, what, 0.01);
@@ -280,6 +324,7 @@ class Sound {
     this.music = saved.music;
     this.fx = saved.fx;
     this.noiseBuffer = saved.noise;
+    this.master = saved.master;
     let peak = 0;
     let sum = 0;
     for (const v of data) {

@@ -16,13 +16,17 @@ export interface Rules {
   maxPlayers: number;
 }
 
-/** 초안 값. 봇 시뮬레이션(scripts/sim.ts) 결과를 보고 조정한다. */
+/**
+ * 봇 시뮬레이션(scripts/sim.ts) 결과를 보고 정한 값.
+ * 완주 3번이 목표일 때 말이 5개면 네 판 중 세 판이 아무도 3번을 못 채우고 끝난다(말이 먼저 떨어짐).
+ * 말 7개면 그 비율이 셋 중 하나로 내려가고 한 판이 평균 26턴쯤 된다.
+ */
 export const RULES: Rules = {
   bridgeLength: 10,
   dieFaces: [1, 2, 3, 4, 5, BLANK],
   maxClaim: 5,
-  runners: 5,
-  finishesToWin: 2,
+  runners: 7,
+  finishesToWin: 3,
   minPlayers: 2,
   maxPlayers: 4,
 };

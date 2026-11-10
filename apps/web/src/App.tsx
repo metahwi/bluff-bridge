@@ -4,6 +4,8 @@ import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
+import { RULES } from '@bluff-bridge/engine';
+import { SoundControl } from './SoundToggle.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 
@@ -12,8 +14,8 @@ const HERO: StageState = {
   length: 10,
   pawns: [3, 7],
   crowd: [
-    { reserve: 3, finished: 1 },
-    { reserve: 4, finished: 0 },
+    { reserve: 4, finished: 1 },
+    { reserve: 5, finished: 0 },
   ],
   active: 0,
 };
@@ -153,6 +155,7 @@ export function App() {
   const member = user && !user.isAnonymous;
   return (
     <main className="home">
+      <SoundControl floating />
       <h1 className="logo">하마하마</h1>
       <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너는 1대1 눈치 게임. 들키면 하마 밥이에요.</p>
       <StageView state={HERO} />
@@ -219,7 +222,9 @@ export function App() {
           </li>
           <li>상대가 믿으면 외친 만큼 다리를 건너요.</li>
           <li>상대가 의심하면 주사위를 공개해요. 뻥이었으면 내 말이, 진실이었으면 상대 말이 하마 밥이 돼요.</li>
-          <li>말 5개 중 2개를 먼저 건너보내면 이겨요.</li>
+          <li>
+            말 {RULES.runners}개 중 {RULES.finishesToWin}개를 먼저 건너보내면 이겨요.
+          </li>
         </ol>
       </section>
 

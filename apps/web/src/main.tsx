@@ -1,7 +1,6 @@
 import { StrictMode } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
-import { SoundToggle } from './SoundToggle.tsx';
 import { StageDemo } from './stage/StageDemo.tsx';
 import 'galmuri/dist/galmuri.css';
 import './styles.css';
@@ -20,8 +19,5 @@ if (import.meta.env.PROD && !local && location.hostname !== HOME_HOST) {
 const demo = import.meta.env.DEV ? new URLSearchParams(location.search).get('stage') : null;
 
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>
-    <SoundToggle />
-    {demo ? <StageDemo mode={demo} /> : <App />}
-  </StrictMode>,
+  <StrictMode>{demo ? <StageDemo mode={demo} /> : <App />}</StrictMode>,
 );

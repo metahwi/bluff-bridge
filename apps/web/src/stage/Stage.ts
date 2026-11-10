@@ -4,6 +4,8 @@ import * as THREE from 'three';
 import { BANK_TOP, BRIDGE_HALF, deckY, makeBanks, makeBone, makeBridge, makeHippo, makeLilies, makePawn, plankX } from './models.ts';
 import type { HippoRig } from './models.ts';
 import { MAX_RIPPLES, makeWater } from './water.ts';
+import { DiceHud } from './dice.ts';
+import type { DiceState } from './dice.ts';
 
 export interface StageState {
   length: number;
@@ -12,6 +14,8 @@ export interface StageState {
   crowd: { reserve: number; finished: number }[];
   /** 지금 차례인 플레이어(말이 콩콩 뛴다). */
   active: number | null;
+  /** 화면 아래 쟁반의 주사위. 없으면 그리지 않는다. */
+  dice?: DiceState;
 }
 
 export interface ChompInfo {
@@ -109,7 +113,8 @@ export class Stage {
   onPhase: (phase: ChompPhase) => void = () => {};
   onLabels: (labels: StageLabel[]) => void = () => {};
   /** 장면 속 움직임에 맞춰 낼 효과음. */
-  onSfx: (name: 'hop' | 'splash' | 'munch' | 'bone') => void = () => {};
+  onSfx: (name: 'hop' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
+  private dice = new DiceHud();
 
   private renderer: THREE.WebGLRenderer;
   private scene = new THREE.Scene();
@@ -151,6 +156,8 @@ export class Stage {
   constructor(private canvas: HTMLCanvasElement) {
     this.renderer = new THREE.WebGLRenderer({ canvas, antialias: false, powerPreference: 'low-power' });
     this.renderer.setPixelRatio(1);
+    this.renderer.autoClear = false; // 게임 장면 위에 주사위 장면을 덧그리기 위해 직접 지운다
+    this.dice.onSfx = (name) => this.onSfx(name);
     this.renderer.shadowMap.enabled = true;
     this.renderer.shadowMap.type = THREE.BasicShadowMap; // 번지지 않는 각진 그림자
     this.scene.background = new THREE.Color('#2f8aa6');
@@ -221,6 +228,7 @@ export class Stage {
     // 가로로 보이는 범위를 고정하고, 세로 시야각을 화면 비율에 맞춘다.
     this.camera.aspect = w / h;
     this.camera.fov = (2 * Math.atan(Math.tan(HALF_FOV) * (h / w)) * 180) / Math.PI;
+    this.dice.resize(w / h);
     this.placeCamera(0, 0);
     this.emitLabels();
   }
@@ -278,8 +286,21 @@ export class Stage {
     const dt = this.paused ? 0 : Math.min(0.05, (now - this.last) / 1000);
     this.last = now;
     this.step(dt);
+    this.dice.update(dt, this.time);
+    this.renderer.clear();
     this.renderer.render(this.scene, this.camera);
+    if (!this.busy) this.dice.render(this.renderer); // 추락 연출 중에는 주사위를 치운다
   };
+
+  /** 주사위 힘을 모으는 중(0~1). null이면 멈춘다. */
+  chargeDice(power: number | null): void {
+    this.dice.setCharge(power);
+  }
+
+  /** 주사위를 던진다. 나온 눈은 다음 setState의 dice.face로 들어온다. */
+  throwDice(power: number): void {
+    this.dice.throw(power);
+  }
 
   private step(elapsed: number): void {
     let dt = elapsed;
@@ -422,6 +443,7 @@ export class Stage {
     const first = !this.state;
     const prev = this.state;
     this.state = next;
+    this.dice.set(next.dice ?? { mode: 'hidden', face: null });
 
     if (!this.bridge || prev?.length !== next.length) {
       if (this.bridge) this.scene.remove(this.bridge);
@@ -571,6 +593,7 @@ export class Stage {
     }
 
     this.busy = true;
+    this.dice.set({ mode: 'hidden', face: null });
     this.onPhase('suspense');
     this.bone.visible = false;
     const other = info.other !== null ? this.pawns[info.other] : undefined;
