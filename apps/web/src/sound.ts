@@ -133,7 +133,8 @@ function chord(name: string): { root: number; tones: number[] } {
 
 const STORAGE_KEY = 'hama:sound';
 const VOLUME_KEY = 'hama:volume';
-const MUSIC_LEVEL = 0.42;
+/** 배경 음악의 크기. 효과음보다 살짝 작게 깔리되, 기본 음량에서 또렷이 들려야 한다. */
+const MUSIC_LEVEL = 1.0;
 
 class Sound {
   private ctx: AudioContext | null = null;
@@ -160,9 +161,10 @@ class Sound {
       // 저장소를 못 쓰면 기본값
     }
     if (typeof window === 'undefined') return;
+    // 브라우저가 '사용자가 직접 눌렀다'고 인정하는 순간에만 소리를 켤 수 있다.
+    // 터치 기기는 누르기 시작(pointerdown)이 아니라 손을 뗀 순간(pointerup, touchend, click)만 인정한다.
     const unlock = () => this.unlock();
-    addEventListener('pointerdown', unlock, { passive: true });
-    addEventListener('keydown', unlock);
+    for (const type of ['pointerup', 'touchend', 'click', 'mousedown', 'keydown']) addEventListener(type, unlock, { passive: true });
     // 탭을 가리면 음악을 멈추고, 돌아오면 다시 튼다.
     document.addEventListener('visibilitychange', () => {
       if (!this.ctx) return;
@@ -203,6 +205,7 @@ class Sound {
   /** 상황에 맞는 곡으로 바꾼다. 마디가 끝날 때 자연스럽게 넘어간다. */
   setMusic(track: Track): void {
     this.wanted = track;
+    this.duck(false); // 연출 도중에 화면이 바뀌어 음악이 줄어든 채 남는 일을 막는다
   }
 
   /** 사용자의 첫 입력 때 호출된다. 오디오를 만들고 음악을 시작한다. */
@@ -217,7 +220,12 @@ class Sound {
       this.nextTime = this.ctx.currentTime + 0.1;
       this.timer = setInterval(() => this.schedule(), 60);
     }
-    if (this.ctx.state === 'suspended' && !document.hidden) void this.ctx.resume();
+    if (this.ctx.state !== 'running' && !document.hidden) void this.ctx.resume();
+  }
+
+  /** 지금 실제로 소리가 나고 있는지(브라우저가 허용했는지). 안내 문구를 띄우는 데 쓴다. */
+  get running(): boolean {
+    return this.ctx?.state === 'running';
   }
 
   private build(ctx: BaseAudioContext): void {
@@ -351,7 +359,7 @@ class Sound {
   duck(on: boolean): void {
     if (!this.ctx || !this.music) return;
     this.music.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.music.gain.linearRampToValueAtTime(on ? 0.07 : MUSIC_LEVEL, this.ctx.currentTime + 0.4);
+    this.music.gain.setTargetAtTime(on ? MUSIC_LEVEL * 0.15 : MUSIC_LEVEL, this.ctx.currentTime, 0.12);
   }
 
   /** 주사위 힘을 모으는 동안 나는 소리. 힘이 셀수록 높은 음. */

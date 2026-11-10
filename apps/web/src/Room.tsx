@@ -234,6 +234,13 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     if (resultShown) sound.play(iWon ? 'win' : 'lose');
   }, [resultShown, iWon]);
 
+  // 게임이 시작되는 순간: 가늘던 게임판이 위아래로 열리고 카메라가 물러난다.
+  const [opening, setOpening] = useState(0);
+  const started = room?.status === 'playing';
+  useEffect(() => {
+    if (started) setOpening((n) => n + 1);
+  }, [started]);
+
   // 배경 음악: 대기실은 마을 곡, 대결 중은 신나는 곡, 누군가 한 번만 더 건너면 이길 때는 조여 오는 곡.
   const inPlay = room?.status === 'playing';
   const matchPoint = inPlay && !!room?.game?.players.some((p) => p.finished >= room.game!.rules.finishesToWin - 1);
@@ -314,7 +321,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
     <>
-      <main className="room" inert={confirmLeave ? true : undefined}>
+      <main className={'room' + (room.status === 'lobby' ? ' lobby' : '')} inert={confirmLeave ? true : undefined}>
         <header>
           <span>
             방 <b>{code}</b>
@@ -336,8 +343,9 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
           </span>
         </header>
 
-        <div className="board">
-          <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} controls={controls} />
+        {/* 판이 시작될 때마다 클래스 이름이 바뀌어 열리는 애니메이션이 다시 재생된다 */}
+        <div className={'board' + (opening > 0 && inGame ? ` opening opening${opening % 2}` : '')}>
+          <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} controls={controls} intro={opening} />
           {game && room.status === 'over' && !cue && (
             <Result
               game={game}

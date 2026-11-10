@@ -30,6 +30,7 @@ export function StageView({
   onCueDone,
   children,
   controls,
+  intro = 0,
 }: {
   state: StageState;
   cue?: ChompCue | null;
@@ -38,6 +39,8 @@ export function StageView({
   children?: ReactNode;
   /** 주사위를 직접 조작하려는 쪽(던지기 단추)이 받아 갈 손잡이. */
   controls?: RefObject<StageControls | null>;
+  /** 이 값이 0보다 큰 새 값으로 바뀔 때마다 게임 시작 장면(카메라가 물러남)을 재생한다. */
+  intro?: number;
 }) {
   const canvas = useRef<HTMLCanvasElement>(null);
   const stage = useRef<Stage | null>(null);
@@ -82,6 +85,7 @@ export function StageView({
       observer.disconnect();
       s.dispose();
       stage.current = null;
+      sound.duck(false); // 연출 도중에 화면을 떠나도 음악이 작아진 채 남지 않게
     };
   }, []);
 
@@ -98,6 +102,16 @@ export function StageView({
     stage.current?.setState(state);
   }, [state]);
 
+  // 게임 시작 장면: 카메라가 물러나는 동안에는 번호와 표지판 글자를 잠깐 숨긴다(위치가 어긋나므로).
+  const [introducing, setIntroducing] = useState(false);
+  useEffect(() => {
+    if (!intro) return;
+    stage.current?.intro();
+    setIntroducing(true);
+    const t = setTimeout(() => setIntroducing(false), 2100);
+    return () => clearTimeout(t);
+  }, [intro]);
+
   const playing = phase !== 'done';
   const shown = playing && phase !== 'suspense';
   const eaten = phase === 'chomp' || phase === 'chew' || phase === 'burp';
@@ -108,6 +122,7 @@ export function StageView({
       {failed && <p className="stageFallback">이 기기에서는 게임판을 그릴 수 없어요. 아래 기록으로 진행 상황을 확인해 주세요.</p>}
 
       {!playing &&
+        !introducing &&
         labels.map((l) => (
           <span key={l.key} className={`stageLabel ${l.kind}`} style={{ left: l.x, top: l.y }}>
             {l.text}

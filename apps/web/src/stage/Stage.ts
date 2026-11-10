@@ -303,6 +303,21 @@ export class Stage {
     if (!this.busy) this.dice.render(this.renderer); // 추락 연출 중에는 주사위를 치운다
   };
 
+  /** 게임이 시작될 때의 첫 장면: 다리를 가까이 잡았다가 천천히 물러나며 마을 전체를 보여 준다. */
+  intro(): void {
+    if (this.busy || this.reduced) return;
+    this.view = { x: 0, y: 0.6, z: 0.4, zoom: 1.9 };
+    let from: View | null = null;
+    this.tween(0.1, 1.9, (k) => {
+      from ??= { ...this.view };
+      if (this.busy) return; // 그 사이에 추락 연출이 시작되면 카메라를 넘겨준다
+      this.view.x = lerp(from.x, VIEW.x, k);
+      this.view.y = lerp(from.y, VIEW.y, k);
+      this.view.z = lerp(from.z, VIEW.z, k);
+      this.view.zoom = lerp(from.zoom, VIEW.zoom, k);
+    }, easeInOut);
+  }
+
   /** 주사위 힘을 모으는 중(0~1). null이면 멈춘다. */
   chargeDice(power: number | null): void {
     this.dice.setCharge(power);

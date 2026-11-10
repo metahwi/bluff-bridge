@@ -40,6 +40,44 @@ main.room > header { order: 0; }
   .side .log { flex: 1; min-height: 80px; max-height: none; }
 }
 
+/* ───── 첫 화면과 대기실: 마을은 가로로 길고 얇은 띠, 방 설정은 크게 ───── */
+.home .stage, main.room.lobby .board .stage { aspect-ratio: 3.4 / 1; height: auto; max-height: 34vh; }
+@media (max-width: 520px) {
+  .home .stage, main.room.lobby .board .stage { aspect-ratio: 2 / 1; }
+}
+main.home { max-width: 1040px; }
+.home .panel.form { gap: 12px; padding: 22px 20px; }
+.home .panel.form input { min-height: 56px; font-size: 18px; }
+.home .panel.form > button { min-height: 60px; font-size: 20px; }
+.home .panel.form label { font-size: 15px; }
+/* 넓은 화면: 왼쪽에 방 설정(크게), 오른쪽에 게임 방법 */
+@media (min-width: 900px) {
+  main.home { display: grid; grid-template-columns: 1.25fr 1fr; align-items: start; }
+  main.home > .logo, main.home > .stage, main.home > .records { grid-column: 1 / -1; }
+  main.home > .panel.form { grid-row: span 2; }
+}
+
+/* 대기실: 게임판 대신 방 정보가 주인공 */
+main.room.lobby { display: flex; flex-direction: column; height: auto; max-width: 1040px; }
+main.room.lobby .side { order: 3; display: flex; flex-direction: column; align-items: center; gap: 12px; }
+main.room.lobby .side > .panel { width: min(640px, 100%); padding: 26px 22px; gap: 14px; }
+main.room.lobby .side > .panel h2 { font-size: 30px; }
+main.room.lobby .side > .panel > button { min-height: 60px; font-size: 20px; align-self: stretch; }
+main.room.lobby .seats li { padding: 12px 0; font-size: 18px; }
+
+/* 게임 시작: 가늘던 화면이 위아래로 열린다(영화의 첫 장면처럼) */
+.board.opening0 .stage { animation: widenA 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+.board.opening1 .stage { animation: widenB 1.5s cubic-bezier(0.2, 0.8, 0.2, 1) backwards; }
+/* 같은 움직임을 이름만 달리 두 개 둔다: 이름이 바뀌어야 다음 판에서 다시 재생된다 */
+@keyframes widenA {
+  from { clip-path: inset(38% 0 38% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+@keyframes widenB {
+  from { clip-path: inset(38% 0 38% 0); }
+  to { clip-path: inset(0 0 0 0); }
+}
+
 /* 결과 점수표: 게임판 위에 얹는다 */
 .board { position: relative; }
 .resultCard { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; overflow-y: auto; background: rgb(20 12 6 / 0.72); text-align: center; animation: bars 0.3s steps(5); transform-origin: 50% 50%; }
