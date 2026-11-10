@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react';
 import type { MatchMessage } from '@bluff-bridge/protocol/types';
+import { Scene } from './Scene.tsx';
 
 /** 빠른 매칭 대기 화면. 대기열에 연결해 두었다가 짝이 정해지면 방 코드를 받는다. */
 export function Matching({ onMatched, onCancel }: { onMatched: (code: string) => void; onCancel: () => void }) {
@@ -59,19 +60,20 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
 
   return (
     <main className="home">
-      <h1>상대를 찾는 중…</h1>
-      <p className="sub" aria-live="off">
-        {seconds}초 지남
-      </p>
-      <small>다른 사람이 빠른 매칭을 누르면 바로 시작해요. 기다리기 지루하면 친구에게 초대 링크를 보내 보세요.</small>
-      {error && (
-        <p className="error" role="alert">
-          {error}
-        </p>
-      )}
-      <button className="ghost" onClick={onCancel}>
-        취소
-      </button>
+      <Scene length={10} pawns={[{ player: 0, pos: 0 }]} active={0} />
+      <section className="panel">
+        <h2>상대를 찾는 중…</h2>
+        <p>{seconds}초 지남</p>
+        <small>다른 사람이 빠른 매칭을 누르면 바로 시작해요. 기다리기 지루하면 친구에게 초대 링크를 보내 보세요.</small>
+        {error && (
+          <p className="error" role="alert">
+            {error}
+          </p>
+        )}
+        <button className="ghost" onClick={onCancel}>
+          취소
+        </button>
+      </section>
     </main>
   );
 }

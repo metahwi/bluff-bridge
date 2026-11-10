@@ -2,10 +2,13 @@ import { useEffect, useRef, useState } from 'react';
 import { BLANK } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
+import { Bone, Die, Hippo, Pawn } from './pixel.tsx';
+import { Scene } from './Scene.tsx';
 import { useRoom } from './useRoom.ts';
 
 type Challenged = Extract<GameEvent, { type: 'challenged' }>;
-type RevealStage = 'suspense' | 'reveal' | 'fall' | 'done';
+/** 긴장 → 주사위 공개 → 추락(하마가 입을 벌림) → 콰직 → 끝 */
+type RevealStage = 'suspense' | 'reveal' | 'fall' | 'chomp' | 'done';
 
 const face = (die: number | null) => (die === null ? '?' : die === BLANK ? '꽝' : String(die));
 
@@ -17,7 +20,7 @@ function Countdown({ deadline }: { deadline: number | null }) {
   }, []);
   if (deadline === null) return null;
   const left = Math.max(0, Math.ceil((deadline - now) / 1000));
-  return <span className={'timer' + (left <= 5 ? ' urgent' : '')}>{left}초</span>;
+  return <span className={'timer' + (left <= 5 ? ' urgent' : '')}>남은 시간 {left}초</span>;
 }
 
 function describe(e: GameEvent, g: PlayerView): string | null {
@@ -29,8 +32,8 @@ function describe(e: GameEvent, g: PlayerView): string | null {
       return `${n(e.player)}가 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.`;
     case 'challenged':
       return e.truth
-        ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 말 추락.`
-        : `${n(e.challenger)}의 의심 성공! 실제 눈은 ${face(e.die)}. ${n(e.roller)}의 말 추락.`;
+        ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 말이 하마 밥이 됐어요.`
+        : `${n(e.challenger)}의 의심 성공! 실제 눈은 ${face(e.die)}. ${n(e.roller)}의 말이 하마 밥이 됐어요.`;
     case 'finished':
       return `${n(e.player)} 완주!`;
     case 'out':
@@ -42,16 +45,17 @@ function describe(e: GameEvent, g: PlayerView): string | null {
   }
 }
 
-/** 의심 결과 연출: 긴장 → 주사위 공개 → 추락. */
+/** 의심 결과 연출. 이 게임에서 가장 힘을 준 장면이다. */
 function Reveal({ event, game, onDone }: { event: Challenged; game: PlayerView; onDone: () => void }) {
   const [stage, setStage] = useState<RevealStage>('suspense');
   const button = useRef<HTMLButtonElement>(null);
 
   useEffect(() => {
     const timers = [
-      setTimeout(() => setStage('reveal'), 900),
-      setTimeout(() => setStage('fall'), 2100),
-      setTimeout(() => setStage('done'), 3400),
+      setTimeout(() => setStage('reveal'), 1000),
+      setTimeout(() => setStage('fall'), 2400),
+      setTimeout(() => setStage('chomp'), 3150),
+      setTimeout(() => setStage('done'), 4300),
     ];
     return () => timers.forEach(clearTimeout);
   }, [event]);
@@ -60,21 +64,42 @@ function Reveal({ event, game, onDone }: { event: Challenged; game: PlayerView; 
   }, [stage]);
 
   const shown = stage !== 'suspense';
-  const falling = stage === 'fall' || stage === 'done';
+  const eaten = stage === 'chomp' || stage === 'done';
   const victim = game.players[event.fallen]?.name ?? '?';
 
   return (
     <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="reveal-title">
-      <div className={'reveal ' + stage}>
+      <div className={'panel reveal ' + stage}>
         <h2 id="reveal-title">{!shown ? '진실일까?' : event.truth ? '진실!' : '뻥이야!'}</h2>
-        <div className={'die big' + (shown ? '' : ' shaking')}>{shown ? face(event.die) : '?'}</div>
-        <p>
-          선언 <b>{event.claim}</b> → 실제 <b>{shown ? face(event.die) : '?'}</b>
-        </p>
-        <div className="drop">
-          <span className={`pawn p${event.fallen}` + (falling ? ' falling' : '')} />
+        <div className="compare">
+          <span>
+            선언 <b>{event.claim}</b>
+          </span>
+          <Die value={shown ? event.die : null} big shaking={!shown} />
+          <span>
+            실제 <b>{shown ? face(event.die) : '?'}</b>
+          </span>
         </div>
-        <p className="victim">{falling ? `${victim}의 말 추락` : ' '}</p>
+
+        <div className="pit">
+          <div className="pitPlank" />
+          {!eaten && <Pawn player={event.fallen} scale={4} className="victimPawn" />}
+          {stage === 'chomp' && <span className="crunch">콰직!</span>}
+          {stage === 'done' && (
+            <>
+              <Bone className="bone" />
+              <span className="burp">꺼억</span>
+            </>
+          )}
+          <div className="pitHippo">
+            <Hippo scale={5} open={stage === 'fall'} />
+          </div>
+          <div className="waves" />
+        </div>
+
+        <p className="victim" aria-live="assertive">
+          {eaten ? `${victim}의 말이 하마에게 먹혔어요.` : ' '}
+        </p>
         <button ref={button} disabled={stage !== 'done'} onClick={onDone}>
           계속
         </button>
@@ -83,30 +108,32 @@ function Reveal({ event, game, onDone }: { event: Challenged; game: PlayerView; 
   );
 }
 
-function Board({ game, me }: { game: PlayerView; me: number }) {
-  const cells = Array.from({ length: game.rules.bridgeLength + 1 }, (_, i) => i);
+function Plates({ game, me }: { game: PlayerView; me: number }) {
   return (
-    <section className="board">
+    <section className="plates">
       {game.players.map((p, i) => (
-        <div key={i} className={'lane' + (game.phase !== 'over' && game.turn === i ? ' active' : '')}>
-          <div className="laneHead">
-            <b>
-              <span className={`pawn small p${i}`} /> {p.name}
-              {i === me && <small> (나)</small>}
-            </b>
-            <span>
-              완주 {p.finished}/{game.rules.finishesToWin} · 대기 {p.reserve} · 추락 {p.lost}
-            </span>
+        <div key={i} className={'plate' + (game.phase !== 'over' && game.turn === i ? ' active' : '')}>
+          <div className="plateName">
+            <Pawn player={i} scale={2} />
+            <b>{p.name}</b>
+            {i === me && <small>나</small>}
           </div>
-          <div className="track">
-            {cells.map((c) => (
-              <div key={c} className={'cell' + (c === 0 ? ' start' : '')}>
-                <span className="num">{c === 0 ? '출발' : c}</span>
-                {p.pos === c && <span className={`pawn p${i}`} />}
-              </div>
-            ))}
-            <div className="cell goal">도착</div>
-          </div>
+          <dl>
+            <div>
+              <dt>완주</dt>
+              <dd>
+                {p.finished}/{game.rules.finishesToWin}
+              </dd>
+            </div>
+            <div>
+              <dt>대기</dt>
+              <dd>{p.reserve}</dd>
+            </div>
+            <div>
+              <dt>먹힘</dt>
+              <dd>{p.lost}</dd>
+            </div>
+          </dl>
         </div>
       ))}
     </section>
@@ -134,10 +161,10 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
     const claims = Array.from({ length: game.rules.maxClaim }, (_, i) => i + 1);
     return (
       <>
-        <div className="die">{face(game.die)}</div>
+        <Die value={game.die} />
         <h2>{game.die === BLANK ? '꽝! 뻥을 쳐야 해요.' : '몇 칸이라고 선언할까요?'}</h2>
         <small>이 주사위는 나만 볼 수 있어요.</small>
-        <div className="row">
+        <div className="row claims">
           {claims.map((v) => (
             <button
               key={v}
@@ -156,9 +183,9 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
     if (game.responder !== me) {
       return (
         <>
-          {myTurn && <div className="die">{face(game.die)}</div>}
+          {myTurn && <Die value={game.die} />}
           <h2>
-            "{game.claim}칸!" — {name(game.responder)}의 선택을 기다리는 중…
+            "{game.claim}칸!" {name(game.responder)}의 선택을 기다리는 중…
           </h2>
         </>
       );
@@ -172,7 +199,9 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
           <button className="ghost" onClick={() => send({ t: 'act', action: { type: 'accept' } })}>
             믿기
           </button>
-          <button onClick={() => send({ t: 'act', action: { type: 'challenge' } })}>의심하기</button>
+          <button className="danger" onClick={() => send({ t: 'act', action: { type: 'challenge' } })}>
+            의심하기
+          </button>
         </div>
       </>
     );
@@ -224,15 +253,23 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   if (fatal) {
     return (
       <main className="home">
-        <h1>입장할 수 없어요</h1>
-        <p className="error" role="alert">
-          {fatal}
-        </p>
-        <button onClick={onExit}>처음으로</button>
+        <div className="panel">
+          <h2>입장할 수 없어요</h2>
+          <p className="error" role="alert">
+            {fatal}
+          </p>
+          <button onClick={onExit}>처음으로</button>
+        </div>
       </main>
     );
   }
-  if (!room) return <main className="home">연결 중…</main>;
+  if (!room) {
+    return (
+      <main className="home">
+        <div className="panel">연결 중…</div>
+      </main>
+    );
+  }
 
   const game = room.game;
   const me = room.seats[room.me];
@@ -244,111 +281,128 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
     <>
-    <main className="room" inert={reveal || confirmLeave ? true : undefined}>
-      <header>
-        <span>
-          방 <b>{code}</b>
-          <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
-        </span>
-        <span className="row">
-          {!room.auto && (
-            <button className="ghost" onClick={copyLink}>
-              {copied ? '복사됨' : '초대 링크 복사'}
+      <main className="room" inert={reveal || confirmLeave ? true : undefined}>
+        <header>
+          <span>
+            방 <b>{code}</b>
+            <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
+          </span>
+          <span className="row">
+            {!room.auto && (
+              <button className="ghost small" onClick={copyLink}>
+                {copied ? '복사됨' : '초대 링크 복사'}
+              </button>
+            )}
+            <button
+              className="ghost small"
+              onClick={() => (room.status === 'playing' ? setConfirmLeave(true) : leave())}
+            >
+              나가기
             </button>
-          )}
-          <button className="ghost" onClick={() => (room.status === 'playing' ? setConfirmLeave(true) : leave())}>
-            나가기
-          </button>
-        </span>
-      </header>
+          </span>
+        </header>
 
-      {room.status === 'lobby' && (
-        <section className="panel">
-          <h2>
-            {room.auto
-              ? '상대가 들어오는 중…'
-              : room.seats.length < 2
-                ? '친구를 기다리는 중…'
-                : '둘 다 준비하면 시작해요.'}
-          </h2>
-          <ul className="seats">
-            {[0, 1].map((i) => {
-              const s = room.seats[i];
-              return (
-                <li key={i}>
-                  <span className={`pawn small p${i}`} />
-                  {s ? s.name : '빈자리'}
-                  {i === room.me && <small> (나)</small>}
-                  <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
-                </li>
-              );
-            })}
-          </ul>
-          {room.auto ? (
-            <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
-          ) : (
-            <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
-              {me?.ready ? '준비 취소' : '준비 완료'}
-            </button>
-          )}
-        </section>
-      )}
-
-      {game && room.status !== 'lobby' && (
-        <>
-          <Board game={game} me={room.me} />
-          <section className="panel" aria-live="polite">
-            {room.status === 'playing' ? (
-              <>
-                <Countdown deadline={deadline} />
-                <Actions room={room} game={game} send={send} />
-                {room.seats.some((s) => !s.online) && (
-                  <p className="notice" role="status">
-                    상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
-                  </p>
-                )}
-              </>
-            ) : (
-              <>
-                <h2>{winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}</h2>
-                {forfeiter !== null && (
-                  <p className="notice" role="status">
-                    {forfeiter === room.me
-                      ? '내가 기권해서 패배로 기록됐어요.'
-                      : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
-                  </p>
-                )}
-                <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
-                  {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
+        {room.status === 'lobby' && (
+          <>
+            <Scene length={10} pawns={room.seats.map((_, i) => ({ player: i, pos: 0 }))} />
+            <section className="panel">
+              <h2>
+                {room.auto
+                  ? '상대가 들어오는 중…'
+                  : room.seats.length < 2
+                    ? '친구를 기다리는 중…'
+                    : '둘 다 준비하면 시작해요.'}
+              </h2>
+              <ul className="seats">
+                {[0, 1].map((i) => {
+                  const s = room.seats[i];
+                  return (
+                    <li key={i}>
+                      <Pawn player={i} scale={2} />
+                      {s ? s.name : '빈자리'}
+                      {i === room.me && <small> (나)</small>}
+                      <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
+                    </li>
+                  );
+                })}
+              </ul>
+              {room.auto ? (
+                <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
+              ) : (
+                <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
+                  {me?.ready ? '준비 취소' : '준비 완료'}
                 </button>
-              </>
+              )}
+            </section>
+          </>
+        )}
+
+        {game && room.status !== 'lobby' && (
+          <>
+            <Plates game={game} me={room.me} />
+            <Scene
+              length={game.rules.bridgeLength}
+              pawns={game.players.map((p, i) => ({ player: i, pos: p.pos }))}
+              active={room.status === 'playing' ? game.turn : null}
+            />
+            <section className="panel" aria-live="polite">
+              {room.status === 'playing' ? (
+                <>
+                  <Countdown deadline={deadline} />
+                  <Actions room={room} game={game} send={send} />
+                  {room.seats.some((s) => !s.online) && (
+                    <p className="notice" role="status">
+                      상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
+                    </p>
+                  )}
+                </>
+              ) : (
+                <>
+                  <h2 className="result">
+                    {winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}
+                  </h2>
+                  {forfeiter !== null && (
+                    <p className="notice" role="status">
+                      {forfeiter === room.me
+                        ? '내가 기권해서 패배로 기록됐어요.'
+                        : `${game.players[forfeiter]?.name} 님이 기권했어요.`}
+                    </p>
+                  )}
+                  <button disabled={me?.rematch} onClick={() => send({ t: 'rematch' })}>
+                    {me?.rematch ? '상대를 기다리는 중…' : '다시 하기'}
+                  </button>
+                </>
+              )}
+              {error && (
+                <p className="error" role="alert">
+                  {error}
+                </p>
+              )}
+            </section>
+            {log.length > 0 && (
+              <section className="log">
+                {log.map((line, i) => (
+                  <p key={log.length - i}>{line}</p>
+                ))}
+              </section>
             )}
-            {error && (
-              <p className="error" role="alert">
-                {error}
-              </p>
-            )}
-          </section>
-          <section className="log">
-            {log.map((line, i) => (
-              <p key={log.length - i}>{line}</p>
-            ))}
-          </section>
-        </>
-      )}
-    </main>
+          </>
+        )}
+      </main>
 
       {reveal && game && <Reveal event={reveal} game={game} onDone={() => setReveal(null)} />}
       {confirmLeave && (
         <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="leave-title">
-          <div className="reveal">
+          <div className="panel">
             <h2 id="leave-title">나갈까요?</h2>
             <p>지금 나가면 이 판은 패배로 처리돼요.</p>
             <div className="row">
               <button className="ghost" autoFocus onClick={() => setConfirmLeave(false)}>
                 계속 하기
               </button>
-              <button onClick={leave}>나가기</button>
+              <button className="danger" onClick={leave}>
+                나가기
+              </button>
             </div>
           </div>
         </div>

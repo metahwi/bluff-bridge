@@ -12,6 +12,7 @@
     "@bluff-bridge/engine": "*",
     "@bluff-bridge/protocol": "*",
     "better-auth": "^1.7.19",
+    "galmuri": "^2.40.3",
     "react": "^19.3.1",
     "react-dom": "^19.3.1"
   },

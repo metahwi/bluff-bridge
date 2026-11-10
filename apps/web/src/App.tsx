@@ -4,6 +4,7 @@ import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
+import { Scene } from './Scene.tsx';
 
 const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
 const REASON_LABEL: Record<string, string> = { finish: '완주', elimination: '말 소진', forfeit: '기권' };
@@ -18,7 +19,7 @@ function Records({ me }: { me: Me }) {
   const r = me.records;
   if (!r || r.played === 0) return null;
   return (
-    <section className="records">
+    <section className="panel records">
       <h2>
         전적 {r.played}전 {r.won}승 {r.played - r.won}패
       </h2>
@@ -112,7 +113,13 @@ export function App() {
     await reload();
   }
 
-  if (!me) return <main className="home">{loadError || '불러오는 중…'}</main>;
+  if (!me) {
+    return (
+      <main className="home">
+        <div className="panel">{loadError || '불러오는 중…'}</div>
+      </main>
+    );
+  }
 
   const user = me.user;
   if (matching && user) {
@@ -134,9 +141,17 @@ export function App() {
   const member = user && !user.isAnonymous;
   return (
     <main className="home">
-      <h1>뻥다리</h1>
-      <p className="sub">주사위를 숨기고, 뻥치고, 다리를 건너세요.</p>
+      <h1 className="logo">뻥다리</h1>
+      <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너요. 들키면 하마 밥이에요.</p>
+      <Scene
+        length={10}
+        pawns={[
+          { player: 0, pos: 3 },
+          { player: 1, pos: 7 },
+        ]}
+      />
 
+      <section className="panel form">
       <label htmlFor="name">닉네임</label>
       <input
         id="name"
@@ -187,7 +202,9 @@ export function App() {
         </p>
       )}
 
-      <section className="account">
+      </section>
+
+      <section className="panel account">
         {member ? (
           <div className="row">
             <span>{user.name} 님으로 로그인됨</span>
