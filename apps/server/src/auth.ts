@@ -24,6 +24,11 @@ function build(env: Env, baseURL: string) {
     database: env.DB,
     secret: env.BETTER_AUTH_SECRET,
     baseURL,
+    // 로컬 개발(BETTER_AUTH_URL 없음)에서는 라이브 화면 서버(5173)와 로컬 서버(8787) 주소를 모두 허용한다.
+    // 운영에서는 BETTER_AUTH_URL 한 곳만 허용된다.
+    trustedOrigins: env.BETTER_AUTH_URL
+      ? []
+      : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'http://127.0.0.1:8787'],
     socialProviders: {
       ...(providers.includes('google') && {
         google: { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! },
