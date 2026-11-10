@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NAME_MAX, ROOM_CODE } from '@bluff-bridge/protocol/types';
 import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
+import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
 
 const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
@@ -41,6 +42,7 @@ export function App() {
   const [code, setCode] = useState(codeFromPath);
   /** 닉네임을 확인하고 방에 들어가기로 했는지. 로그인된 사람은 초대 링크로 바로 들어간다. */
   const [entered, setEntered] = useState(false);
+  const [matching, setMatching] = useState(false);
   const [draft, setDraft] = useState('');
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
@@ -113,6 +115,18 @@ export function App() {
   if (!me) return <main className="home">{loadError || '불러오는 중…'}</main>;
 
   const user = me.user;
+  if (matching && user) {
+    return (
+      <Matching
+        onCancel={() => setMatching(false)}
+        onMatched={(matched) => {
+          setMatching(false);
+          setEntered(true);
+          go(matched);
+        }}
+      />
+    );
+  }
   if (code && user && (entered || savedName)) {
     return <Room code={code} userId={user.id} onExit={() => go('')} />;
   }
@@ -143,8 +157,11 @@ export function App() {
         </>
       ) : (
         <>
-          <button disabled={busy || !draft.trim()} onClick={createRoom}>
-            {busy ? '만드는 중…' : '방 만들기'}
+          <button disabled={busy || !draft.trim()} onClick={() => withName(() => setMatching(true))}>
+            빠른 매칭
+          </button>
+          <button className="ghost" disabled={busy || !draft.trim()} onClick={createRoom}>
+            친구와 하기 (방 만들기)
           </button>
           <label htmlFor="invite">초대받았나요?</label>
           <div className="row">

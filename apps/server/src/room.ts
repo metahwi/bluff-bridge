@@ -30,6 +30,10 @@ interface Seat {
 interface Room {
   code: string;
   status: 'lobby' | 'playing' | 'over';
+  /** 빠른 매칭 방: 두 명이 모이면 준비 없이 시작한다. */
+  auto?: boolean;
+  /** 빠른 매칭 방: 이 계정들만 들어올 수 있다. */
+  reserved?: string[];
   seats: Seat[];
   /** 실제 주사위 눈이 들어 있는 전체 상태. 이 객체는 절대 그대로 내보내지 않는다. */
   game: GameState | null;
@@ -103,6 +107,7 @@ export class GameRoom extends DurableObject<Env> {
     return {
       code: room.code,
       status: room.status,
+      auto: !!room.auto,
       seats: room.seats.map((s) => ({
         name: s.name,
         ready: s.ready,
@@ -202,12 +207,22 @@ export class GameRoom extends DurableObject<Env> {
 
     if (url.pathname === '/create') {
       if (await this.load()) return new Response(null, { status: 409 });
-      const code = url.searchParams.get('code')!;
-      this.room = { code, status: 'lobby', seats: [], game: null, deadline: null, events: [], seq: 0 };
+      const opts = (await request.json()) as { code: string; auto?: boolean; reserved?: string[] };
+      this.room = {
+        code: opts.code,
+        status: 'lobby',
+        auto: opts.auto,
+        reserved: opts.reserved,
+        seats: [],
+        game: null,
+        deadline: null,
+        events: [],
+        seq: 0,
+      };
       await this.ctx.storage.put('room', this.room);
       // 아무도 들어오지 않으면 알람에서 방을 지운다.
       await this.ctx.storage.setAlarm(Date.now() + GRACE_MS);
-      return Response.json({ code });
+      return Response.json({ code: opts.code });
     }
 
     if (url.pathname === '/info') {
@@ -238,8 +253,10 @@ export class GameRoom extends DurableObject<Env> {
       if (!seat) {
         if (room.status !== 'lobby') return reject('이미 게임이 진행 중인 방이에요.');
         if (room.seats.length >= MAX_SEATS) return reject('방이 가득 찼어요.');
+        if (room.reserved && !room.reserved.includes(pid)) return reject('매칭된 사람만 들어올 수 있는 방이에요.');
         seat = { pid, name, ready: false, rematch: false, offlineSince: null };
         room.seats.push(seat);
+        if (room.auto && room.seats.length === MAX_SEATS) this.start(room);
       } else if (room.status === 'lobby') {
         seat.name = name;
       }

@@ -3,7 +3,7 @@
 // 사용: node scripts/e2e.ts [서버 주소]
 import { readFileSync } from 'node:fs';
 import { BLANK, awaiting } from '../../../packages/engine/src/index.ts';
-import type { RoomView, ServerMessage, ClientMessage } from '../../../packages/protocol/src/types.ts';
+import type { RoomView, ServerMessage, ClientMessage, MatchMessage } from '../../../packages/protocol/src/types.ts';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:8787';
 const wsBase = base.replace(/^http/, 'ws');
@@ -192,6 +192,44 @@ const afterForfeit = (await me(cookieB)).records!;
 check(afterForfeit.played === 2 && afterForfeit.recent[0]?.reason === 'forfeit' && afterForfeit.recent[0].won, '기권 판이 전적에 기록되지 않음');
 
 b.ws.close();
+
+// 8. 빠른 매칭: 두 명이 대기열에 서면 같은 방 코드를 받고, 준비 없이 바로 시작한다
+function queue(cookie: string): Promise<MatchMessage[]> {
+  return new Promise((resolve, reject) => {
+    const got: MatchMessage[] = [];
+    const ws = new WebSocket(`${wsBase}/ws/match`, { headers: { Cookie: cookie, Origin: base } } as never);
+    ws.onmessage = (e) => got.push(JSON.parse(String(e.data)) as MatchMessage);
+    ws.onclose = () => resolve(got);
+    ws.onerror = () => reject(new Error('대기열 접속 실패'));
+  });
+}
+const noLogin = await queue('').then(
+  () => true,
+  () => false,
+);
+check(!noLogin, '로그인 없이 대기열에 접속됨');
+
+const [cookieX, cookieY, cookieZ] = [await guest('엑스'), await guest('와이'), await guest('제트')];
+const waitX = queue(cookieX);
+await sleep(300); // X가 먼저 줄을 서게 한다
+const [gotX, gotY] = await Promise.all([waitX, queue(cookieY)]);
+const matchedX = gotX.find((m) => m.t === 'matched');
+const matchedY = gotY.find((m) => m.t === 'matched');
+check(gotX[0]?.t === 'waiting', '먼저 온 사람이 대기 안내를 받지 못함');
+check(!!matchedX && !!matchedY && matchedX.code === matchedY.code, `두 사람의 방 코드가 다름: ${JSON.stringify([gotX, gotY])}`);
+if (matchedX?.t === 'matched') {
+  const x = await connect(matchedX.code, '엑스', cookieX);
+  const intruder = await connect(matchedX.code, '제트', cookieZ);
+  await until(() => intruder.closed !== null, '매칭되지 않은 사람 거절');
+  check(intruder.closed === 4003, '매칭되지 않은 사람이 방에 들어옴');
+  const y = await connect(matchedX.code, '와이', cookieY);
+  await until(() => x.room?.status === 'playing' && y.room?.status === 'playing', '빠른 매칭 자동 시작');
+  check(x.room!.auto === true, '빠른 매칭 방 표시가 없음');
+  console.log(`빠른 매칭: 방 ${matchedX.code}에서 자동 시작`);
+  x.ws.close();
+  y.ws.close();
+}
+
 if (failures.length) {
   console.error(`\n실패 ${failures.length}건:`);
   for (const f of new Set(failures)) console.error(' - ' + f);

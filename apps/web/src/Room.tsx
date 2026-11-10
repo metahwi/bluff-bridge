@@ -248,9 +248,11 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
           <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
         </span>
         <span className="row">
-          <button className="ghost" onClick={copyLink}>
-            {copied ? '복사됨' : '초대 링크 복사'}
-          </button>
+          {!room.auto && (
+            <button className="ghost" onClick={copyLink}>
+              {copied ? '복사됨' : '초대 링크 복사'}
+            </button>
+          )}
           <button className="ghost" onClick={() => (room.status === 'playing' ? setConfirmLeave(true) : leave())}>
             나가기
           </button>
@@ -259,7 +261,13 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
 
       {room.status === 'lobby' && (
         <section className="panel">
-          <h2>{room.seats.length < 2 ? '친구를 기다리는 중…' : '둘 다 준비하면 시작해요.'}</h2>
+          <h2>
+            {room.auto
+              ? '상대가 들어오는 중…'
+              : room.seats.length < 2
+                ? '친구를 기다리는 중…'
+                : '둘 다 준비하면 시작해요.'}
+          </h2>
           <ul className="seats">
             {[0, 1].map((i) => {
               const s = room.seats[i];
@@ -273,12 +281,13 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
               );
             })}
           </ul>
-          <button
-            className={me?.ready ? 'ghost' : ''}
-            onClick={() => send({ t: 'ready', ready: !me?.ready })}
-          >
-            {me?.ready ? '준비 취소' : '준비 완료'}
-          </button>
+          {room.auto ? (
+            <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
+          ) : (
+            <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
+              {me?.ready ? '준비 취소' : '준비 완료'}
+            </button>
+          )}
         </section>
       )}
 

@@ -26,6 +26,8 @@ export interface SeatView {
 export interface RoomView {
   code: string;
   status: 'lobby' | 'playing' | 'over';
+  /** 빠른 매칭으로 만들어진 방. 두 명이 모이면 바로 시작한다. */
+  auto: boolean;
   seats: SeatView[];
   /** 내 자리 번호. 게임 중에는 game.players의 번호와 같다. */
   me: number;
@@ -36,6 +38,12 @@ export interface RoomView {
   /** 현재 행동의 남은 시간. 게임 중이 아니면 null. */
   remainingMs: number | null;
 }
+
+/** 빠른 매칭 대기열(/ws/match)이 보내는 메시지. */
+export type MatchMessage =
+  | { t: 'waiting' }
+  | { t: 'matched'; code: string }
+  | { t: 'error'; message: string };
 
 export type ServerMessage =
   | { t: 'state'; room: RoomView }

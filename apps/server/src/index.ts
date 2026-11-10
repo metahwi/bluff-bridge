@@ -2,11 +2,14 @@ import { Hono } from 'hono';
 import { getMigrations } from 'better-auth/db/migration';
 import { ROOM_CODE } from '@bluff-bridge/protocol';
 import { enabledProviders, getAuth, getUser } from './auth.ts';
+import { createRoom, roomStub } from './codes.ts';
+import { Matchmaker } from './matchmaker.ts';
 import { RECORD_TABLES, getRecords } from './records.ts';
 import { GameRoom } from './room.ts';
 
 export interface Env {
   ROOM: DurableObjectNamespace<GameRoom>;
+  MATCH: DurableObjectNamespace<Matchmaker>;
   ASSETS: Fetcher;
   DB: D1Database;
   BETTER_AUTH_SECRET: string;
@@ -18,18 +21,6 @@ export interface Env {
   GOOGLE_CLIENT_SECRET?: string;
   KAKAO_CLIENT_ID?: string;
   KAKAO_CLIENT_SECRET?: string;
-}
-
-// 헷갈리는 글자(I, L, O, 0, 1)를 뺀 방 코드용 글자.
-const ALPHABET = 'ABCDEFGHJKMNPQRSTUVWXYZ23456789';
-
-function newCode(): string {
-  const bytes = crypto.getRandomValues(new Uint8Array(6));
-  return Array.from(bytes, (b) => ALPHABET[b % ALPHABET.length]).join('');
-}
-
-function roomStub(env: Env, code: string) {
-  return env.ROOM.get(env.ROOM.idFromName(code));
 }
 
 const app = new Hono<{ Bindings: Env }>();
@@ -62,12 +53,19 @@ app.post('/api/admin/migrate', async (c) => {
 
 app.post('/api/rooms', async (c) => {
   if (!(await getUser(c.env, c.req.raw))) return c.json({ error: '먼저 닉네임을 정해 주세요.' }, 401);
-  for (let i = 0; i < 5; i++) {
-    const code = newCode();
-    const res = await roomStub(c.env, code).fetch(`https://room/create?code=${code}`, { method: 'POST' });
-    if (res.ok) return c.json({ code });
-  }
+  const code = await createRoom(c.env);
+  if (code) return c.json({ code });
   return c.json({ error: '방을 만들지 못했어요. 다시 시도해 주세요.' }, 503);
+});
+
+/** 빠른 매칭 대기열. 짝이 정해지면 방 코드를 보내고 연결을 닫는다. */
+app.get('/ws/match', async (c) => {
+  if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') return c.text('WebSocket only', 426);
+  const user = await getUser(c.env, c.req.raw);
+  if (!user) return c.text('login required', 401);
+  const target = new URL('https://match/ws');
+  target.searchParams.set('uid', user.id);
+  return c.env.MATCH.get(c.env.MATCH.idFromName('global')).fetch(new Request(target, c.req.raw));
 });
 
 app.get('/api/rooms/:code', async (c) => {
@@ -90,4 +88,4 @@ app.get('/ws/room/:code', async (c) => {
 });
 
 export default app;
-export { GameRoom };
+export { GameRoom, Matchmaker };
