@@ -224,7 +224,7 @@ class Sound {
   private render(ctx: BaseAudioContext, out: AudioNode, name: Sfx, t: number): void {
     switch (name) {
       case 'hop':
-        this.tone(ctx, out, 'square', 520, t, 0.09, 0.22, 880);
+        this.tone(ctx, out, 'square', 520, t, 0.09, 0.34, 880);
         break;
       case 'roll':
         for (let i = 0; i < 6; i++) this.hiss(ctx, out, t + i * 0.055 + Math.random() * 0.02, 0.035, 0.35, 'bandpass', 1800 + Math.random() * 2600);
@@ -234,8 +234,8 @@ class Sound {
         break;
       case 'dice':
         // 주사위가 나무판에 부딪히는 소리
-        this.hiss(ctx, out, t, 0.04, 0.6, 'bandpass', 2400 + Math.random() * 1200);
-        this.tone(ctx, out, 'triangle', 420 + Math.random() * 160, t, 0.05, 0.25, 200);
+        this.hiss(ctx, out, t, 0.05, 1.0, 'bandpass', 2400 + Math.random() * 1200);
+        this.tone(ctx, out, 'triangle', 420 + Math.random() * 160, t, 0.07, 0.5, 200);
         break;
       case 'cup':
         this.tone(ctx, out, 'sine', 160, t, 0.16, 0.6, 60);
