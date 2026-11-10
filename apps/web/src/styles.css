@@ -42,6 +42,9 @@ body {
 }
 main { max-width: 560px; margin: 0 auto; padding: 16px max(16px, env(safe-area-inset-right)) calc(24px + env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left)); display: flex; flex-direction: column; gap: 12px; }
 /* 좁은 휴대폰: 여백을 줄여 다리 칸이 말보다 좁아지지 않게 한다 */
+/* 게임 화면은 넓게 쓴다 */
+main.room { max-width: 960px; }
+main.home { max-width: 720px; }
 @media (max-width: 380px) {
   main { padding-left: 10px; padding-right: 10px; }
   .panel { padding: 14px 12px; }

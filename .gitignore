@@ -7,3 +7,4 @@ dist/
 *.log
 .prod.vars
 .secrets.json
+.shots/

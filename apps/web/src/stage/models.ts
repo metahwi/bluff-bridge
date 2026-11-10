@@ -1,0 +1,335 @@
+// 3D 모델. 전부 기본 도형(구, 상자, 원기둥)을 조합해 만든다.
+// 낮은 해상도로 그려 픽셀로 보이게 하므로 모양은 단순하고 덩어리가 커야 잘 읽힌다.
+import * as THREE from 'three';
+
+/** 명암을 네 단계로 끊어 픽셀 아트처럼 보이게 하는 그라데이션. */
+const gradient = new THREE.DataTexture(new Uint8Array([95, 150, 205, 255]), 4, 1, THREE.RedFormat);
+gradient.minFilter = THREE.NearestFilter;
+gradient.magFilter = THREE.NearestFilter;
+gradient.needsUpdate = true;
+
+const materials = new Map<string, THREE.MeshToonMaterial>();
+export function toon(color: string): THREE.MeshToonMaterial {
+  let m = materials.get(color);
+  if (!m) materials.set(color, (m = new THREE.MeshToonMaterial({ color, gradientMap: gradient })));
+  return m;
+}
+
+function lit<T extends THREE.Mesh>(mesh: T, cast = true): T {
+  mesh.castShadow = cast;
+  mesh.receiveShadow = true;
+  return mesh;
+}
+
+const sphere = new THREE.SphereGeometry(1, 14, 10);
+const cube = new THREE.BoxGeometry(1, 1, 1);
+
+/** 반지름 r인 공. sx/sy/sz로 눌러 타원체를 만든다. */
+export function ball(r: number, color: string, at: [number, number, number], squash: [number, number, number] = [1, 1, 1]) {
+  const m = lit(new THREE.Mesh(sphere, toon(color)));
+  m.scale.set(r * squash[0], r * squash[1], r * squash[2]);
+  m.position.set(...at);
+  return m;
+}
+
+export function box(size: [number, number, number], color: string, at: [number, number, number] = [0, 0, 0]) {
+  const m = lit(new THREE.Mesh(cube, toon(color)));
+  m.scale.set(...size);
+  m.position.set(...at);
+  return m;
+}
+
+// ───────── 하마 ─────────
+
+export interface HippoRig {
+  root: THREE.Group;
+  /** 0 = 입 다묾, 1 = 쩍 벌림. 위턱은 뒤로 젖혀지고 아래턱은 내려간다. */
+  setOpen(v: number): void;
+  /** 0 = 눈 뜸, 1 = 감음. */
+  setBlink(v: number): void;
+  ears: THREE.Group[];
+}
+
+const HIDE = '#8f6f7a';
+const HIDE_DARK = '#75596a';
+const MUZZLE = '#c4a3a8';
+const JAW = '#a98990';
+const EAR_PINK = '#f29bb0';
+const MOUTH = '#c63c5a';
+const TONGUE = '#f58ea6';
+const TOOTH = '#fffbee';
+const EYE = '#1b1210';
+
+/** 머리가 +z(카메라 쪽)를 향하는 하마. 원점은 머리 가운데의 물 높이. */
+export function makeHippo(): HippoRig {
+  const root = new THREE.Group();
+
+  // 몸통과 목: 평소에는 물에 잠겨 있고, 솟구칠 때만 보인다.
+  root.add(ball(0.85, HIDE, [0, -0.95, -1.15], [1.25, 0.9, 1.7]));
+  root.add(ball(0.62, HIDE, [0, -0.42, -0.45], [1.15, 0.95, 1.0]));
+
+  // 위턱(머리 전체). 뒤통수 쪽 경첩을 축으로 젖혀진다.
+  const skull = new THREE.Group();
+  skull.position.set(0, 0, -0.45);
+  skull.add(ball(0.56, HIDE, [0, 0.22, 0.42], [1.12, 0.84, 1.0]));
+  skull.add(ball(0.5, MUZZLE, [0, 0.1, 1.06], [1.4, 0.6, 1.05]));
+  skull.add(ball(0.46, MOUTH, [0, -0.07, 1.02], [1.3, 0.22, 0.98]));
+  for (const s of [-1, 1]) {
+    skull.add(ball(0.08, HIDE_DARK, [0.27 * s, 0.37, 1.34]));
+    skull.add(ball(0.18, HIDE, [0.37 * s, 0.58, 0.44]));
+    skull.add(box([0.13, 0.24, 0.13], TOOTH, [0.44 * s, -0.2, 1.3]));
+  }
+  const eyes = [-1, 1].map((s) => {
+    const eye = ball(0.095, EYE, [0.38 * s, 0.65, 0.57]);
+    eye.add(ball(0.32, '#ffffff', [-0.35 * s, 0.45, 0.75]));
+    skull.add(eye);
+    return eye;
+  });
+  const ears = [-1, 1].map((s) => {
+    const ear = new THREE.Group();
+    ear.position.set(0.5 * s, 0.6, 0.02);
+    ear.add(ball(0.16, HIDE, [0, 0.06, 0], [1, 1, 0.6]));
+    ear.add(ball(0.095, EAR_PINK, [0, 0.06, 0.07], [1, 1, 0.5]));
+    skull.add(ear);
+    return ear;
+  });
+  root.add(skull);
+
+  // 아래턱: 혀와 송곳니.
+  const jaw = new THREE.Group();
+  jaw.position.copy(skull.position);
+  jaw.add(ball(0.5, JAW, [0, -0.2, 1.02], [1.34, 0.46, 1.05]));
+  jaw.add(ball(0.44, MOUTH, [0, -0.06, 1.0], [1.26, 0.22, 0.98]));
+  jaw.add(ball(0.3, TONGUE, [0, -0.01, 0.86], [1.1, 0.32, 1.3]));
+  for (const s of [-1, 1]) jaw.add(box([0.14, 0.32, 0.14], TOOTH, [0.5 * s, 0.1, 1.32]));
+  root.add(jaw);
+
+  return {
+    root,
+    ears,
+    setOpen(v) {
+      skull.rotation.x = -v * 0.85;
+      jaw.rotation.x = v * 0.5;
+    },
+    setBlink(v) {
+      for (const e of eyes) e.scale.y = 0.095 * (1 - 0.88 * v);
+    },
+  };
+}
+
+// ───────── 말 ─────────
+
+export const PLAYER_COLORS = ['#f0622d', '#3b82f6', '#a855f7', '#22c55e'];
+
+/** 다리를 건너는 꼬마. 원점은 발바닥. +z를 본다. */
+export function makePawn(player: number): THREE.Group {
+  const color = PLAYER_COLORS[player % PLAYER_COLORS.length]!;
+  const c = new THREE.Color(color);
+  const light = '#' + c.clone().lerp(new THREE.Color('#ffffff'), 0.5).getHexString();
+  const dark = '#' + c.clone().lerp(new THREE.Color('#000000'), 0.35).getHexString();
+  const g = new THREE.Group();
+  g.add(ball(0.3, color, [0, 0.38, 0], [1, 1.14, 0.95]));
+  g.add(ball(0.2, light, [0, 0.3, 0.17], [1, 1, 0.55]));
+  for (const s of [-1, 1]) {
+    g.add(ball(0.1, color, [0.2 * s, 0.7, 0]));
+    g.add(ball(0.06, EYE, [0.12 * s, 0.47, 0.26]));
+    g.add(ball(0.09, dark, [0.14 * s, 0.06, 0.06], [1, 0.7, 1.2]));
+  }
+  return g;
+}
+
+// ───────── 배경 ─────────
+
+export const BRIDGE_HALF = 5;
+export const BANK_TOP = 1;
+
+/** 다리 바닥의 높이. 밧줄 다리라 가운데가 살짝 처진다. */
+export function deckY(x: number): number {
+  const k = x / BRIDGE_HALF;
+  return 0.98 - 0.24 * (1 - k * k);
+}
+
+export function plankX(n: number, length: number): number {
+  return (-length / 2 + n - 0.5) * ((BRIDGE_HALF * 2) / length);
+}
+
+/** 두 점 사이를 잇는 가는 막대(밧줄, 들보). */
+function beam(a: THREE.Vector3, b: THREE.Vector3, thick: number, color: string) {
+  const m = box([thick, thick, a.distanceTo(b)], color);
+  m.position.copy(a).add(b).multiplyScalar(0.5);
+  m.lookAt(b);
+  return m;
+}
+
+export function makeBridge(length: number) {
+  const group = new THREE.Group();
+  const planks: THREE.Mesh[] = [];
+  const step = (BRIDGE_HALF * 2) / length;
+
+  for (let n = 1; n <= length; n++) {
+    const x = plankX(n, length);
+    const plank = box([step * 0.88, 0.13, 1.72], n % 2 ? '#d9a35c' : '#c98f4c', [x, deckY(x), 0]);
+    plank.rotation.z = Math.atan((0.24 * 2 * x) / (BRIDGE_HALF * BRIDGE_HALF));
+    group.add(plank);
+    planks.push(plank);
+  }
+
+  // 들보, 난간 밧줄, 세로 줄
+  for (const z of [-0.78, 0.78]) {
+    for (let i = 0; i < length; i++) {
+      const x0 = -BRIDGE_HALF + i * step;
+      const x1 = x0 + step;
+      const a = new THREE.Vector3(x0, deckY(x0), z);
+      const b = new THREE.Vector3(x1, deckY(x1), z);
+      group.add(beam(a.clone().setY(a.y - 0.1), b.clone().setY(b.y - 0.1), 0.1, '#6b3f1a'));
+      group.add(beam(a.clone().setY(a.y + 0.72), b.clone().setY(b.y + 0.72), 0.07, '#ead29b'));
+      if (i > 0) group.add(box([0.04, 0.72, 0.04], '#c9a56a', [x0, a.y + 0.36, z])); // 난간을 받치는 가는 줄
+    }
+    for (const s of [-1, 1]) {
+      // 언덕에 박은 굵은 말뚝
+      group.add(box([0.22, 1.25, 0.22], '#7a4a26', [s * (BRIDGE_HALF + 0.12), BANK_TOP + 0.55, z]));
+      group.add(box([0.3, 0.1, 0.3], '#5a3418', [s * (BRIDGE_HALF + 0.12), BANK_TOP + 1.2, z]));
+    }
+  }
+  return { group, planks };
+}
+
+function tree(x: number, z: number, s = 1) {
+  const g = new THREE.Group();
+  const trunk = lit(new THREE.Mesh(new THREE.CylinderGeometry(0.1, 0.16, 0.9, 6), toon('#7a4a26')));
+  trunk.position.y = 0.45;
+  g.add(trunk);
+  const leaf = (r: number, color: string, at: [number, number, number]) => {
+    const m = lit(new THREE.Mesh(new THREE.IcosahedronGeometry(r, 1), toon(color)));
+    m.position.set(...at);
+    g.add(m);
+  };
+  leaf(0.66, '#4a9f4b', [0, 1.3, 0]);
+  leaf(0.48, '#6cc45a', [0.34, 1.68, 0.14]);
+  leaf(0.42, '#3b8744', [-0.36, 1.58, -0.1]);
+  leaf(0.36, '#7fd266', [-0.05, 1.95, 0.05]);
+  g.position.set(x, BANK_TOP, z);
+  g.scale.setScalar(s);
+  return g;
+}
+
+function bush(x: number, z: number, color = '#4a9f4b') {
+  const m = lit(new THREE.Mesh(new THREE.IcosahedronGeometry(0.34, 1), toon(color)));
+  m.position.set(x, BANK_TOP + 0.2, z);
+  m.scale.set(1.2, 0.8, 1);
+  return m;
+}
+
+function rock(x: number, y: number, z: number, r: number) {
+  const m = lit(new THREE.Mesh(new THREE.DodecahedronGeometry(r, 0), toon('#9a9aa6')));
+  m.position.set(x, y, z);
+  m.rotation.set(x, z, x * z);
+  m.scale.y = 0.7;
+  return m;
+}
+
+/** 표지판. 글자는 화면 위에 HTML로 얹는다(낮은 해상도에서도 또렷하게). */
+function signpost(x: number, z: number) {
+  const g = new THREE.Group();
+  g.add(box([0.1, 0.9, 0.1], '#5a3418', [0, 0.45, 0]));
+  g.add(box([0.95, 0.45, 0.1], '#d9a35c', [0, 0.95, 0.04]));
+  g.position.set(x, BANK_TOP, z);
+  return g;
+}
+
+/** 결정적인 난수(매번 같은 풍경이 나오게). */
+function seeded(seed: number) {
+  let a = seed;
+  return () => {
+    a = (a + 0x6d2b79f5) | 0;
+    let t = Math.imul(a ^ (a >>> 15), 1 | a);
+    t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+    return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+  };
+}
+
+/** 양쪽 언덕과 그 위의 나무, 덤불, 꽃, 바위, 갈대. */
+export function makeBanks() {
+  const group = new THREE.Group();
+  const rand = seeded(7);
+  const FAR = 14;
+
+  for (const s of [-1, 1]) {
+    // 풀밭 윗면
+    const top = box([8, 0.4, FAR * 2], '#69ad4e', [s * (BRIDGE_HALF + 4), BANK_TOP - 0.2, 0]);
+    top.castShadow = false;
+    group.add(top);
+    // 강 쪽으로 기운 흙 비탈: 위에서 내려다봐도 면이 보여 높이가 느껴진다.
+    const slope = box([1.7, 0.5, FAR * 2], '#b0703c', [s * (BRIDGE_HALF - 0.55), 0.32, 0]);
+    slope.rotation.z = s * 1.05;
+    slope.castShadow = false;
+    group.add(slope);
+    const lip = box([0.34, 0.16, FAR * 2], '#5fa848', [s * (BRIDGE_HALF + 0.1), BANK_TOP - 0.03, 0]);
+    lip.castShadow = false;
+    group.add(lip);
+
+    // 풀밭의 얼룩과 꽃
+    for (let i = 0; i < 26; i++) {
+      const x = s * (BRIDGE_HALF + 0.6 + rand() * 3.2);
+      const z = (rand() - 0.5) * 17;
+      const patch = box([0.5 + rand() * 0.7, 0.02, 0.3 + rand() * 0.5], rand() > 0.5 ? '#5c9d45' : '#7abb5a', [x, BANK_TOP + 0.011, z]);
+      patch.castShadow = false;
+      group.add(patch);
+    }
+    for (let i = 0; i < 16; i++) {
+      const x = s * (BRIDGE_HALF + 0.5 + rand() * 3);
+      const z = (rand() - 0.5) * 16;
+      if (Math.abs(z) < 1.6) continue;
+      const color = ['#ffffff', '#ffd84d', '#ff8fb1', '#c9a0ff'][Math.floor(rand() * 4)]!;
+      group.add(box([0.1, 0.12, 0.1], color, [x, BANK_TOP + 0.14, z]));
+      group.add(box([0.04, 0.12, 0.04], '#3b8744', [x, BANK_TOP + 0.06, z]));
+    }
+    // 물가의 바위와 갈대
+    for (let i = 0; i < 7; i++) {
+      const z = (rand() - 0.5) * 16;
+      if (Math.abs(z) < 1.5) continue;
+      group.add(rock(s * (BRIDGE_HALF - 0.85 - rand() * 0.25), 0.05, z, 0.16 + rand() * 0.16));
+      for (let k = 0; k < 3; k++) {
+        const reed = box([0.05, 0.5 + rand() * 0.4, 0.05], '#3f8f48', [s * (BRIDGE_HALF - 0.75 - rand() * 0.3), 0.25, z + 0.5 + rand() * 0.6]);
+        group.add(reed);
+      }
+    }
+  }
+
+  group.add(tree(-6.5, -4.6, 1.15), tree(-8.2, -1.8, 0.95), tree(-6.9, 5.6, 1), tree(-8.4, 3.2, 1.2));
+  group.add(tree(6.7, -5.4, 1.2), tree(8.3, -2.4, 1), tree(8.0, 2.6, 1.1), tree(6.4, 6.0, 0.95));
+  group.add(bush(-5.9, -2.6), bush(-7.4, 2.0, '#6cc45a'), bush(6.0, -2.8, '#6cc45a'), bush(7.2, 4.4), bush(5.8, 3.4, '#3b8744'));
+  group.add(rock(-7.6, BANK_TOP + 0.12, -3.4, 0.3), rock(7.4, BANK_TOP + 0.1, -0.4, 0.26));
+
+  const signs = [signpost(-6.6, -1.5), signpost(6.6, -1.5)];
+  group.add(...signs);
+  return { group, signs };
+}
+
+/** 물 위에 뜬 연잎. */
+export function makeLilies() {
+  const g = new THREE.Group();
+  const pad = new THREE.CylinderGeometry(0.34, 0.34, 0.03, 9);
+  for (const [x, z, flower] of [
+    [-3.9, -1.2, 1],
+    [3.7, 4.2, 0],
+    [-3.6, 6.3, 1],
+    [3.9, -4.4, 0],
+    [0.2, -7.4, 1],
+  ] as const) {
+    const m = new THREE.Mesh(pad, toon('#58b860'));
+    m.position.set(x, 0.02, z);
+    m.receiveShadow = true;
+    g.add(m);
+    if (flower) g.add(box([0.14, 0.12, 0.14], '#ffc2d6', [x + 0.08, 0.1, z - 0.05]));
+  }
+  return g;
+}
+
+/** 하마가 뱉는 뼈다귀. */
+export function makeBone() {
+  const g = new THREE.Group();
+  g.add(box([0.5, 0.1, 0.1], '#fff8e7'));
+  for (const sx of [-1, 1]) for (const sz of [-1, 1]) g.add(ball(0.085, '#fff8e7', [0.26 * sx, 0, 0.06 * sz]));
+  return g;
+}

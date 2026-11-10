@@ -4,7 +4,19 @@ import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
-import { Scene, Swimmer } from './Scene.tsx';
+import { StageView } from './stage/StageView.tsx';
+import type { StageState } from './stage/Stage.ts';
+
+/** 첫 화면에 보여 줄 게임 한 장면. */
+const HERO: StageState = {
+  length: 10,
+  pawns: [3, 7],
+  crowd: [
+    { reserve: 3, finished: 1 },
+    { reserve: 4, finished: 0 },
+  ],
+  active: 0,
+};
 
 const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
 const REASON_LABEL: Record<string, string> = { finish: '완주', elimination: '말 소진', forfeit: '기권' };
@@ -141,22 +153,9 @@ export function App() {
   const member = user && !user.isAnonymous;
   return (
     <main className="home">
-      <div className="brand">
-        <Swimmer scale={5} className="mascot" />
-        <h1 className="logo">하마하마</h1>
-      </div>
+      <h1 className="logo">하마하마</h1>
       <p className="sub">주사위를 숨기고 뻥을 치며 다리를 건너는 1대1 눈치 게임. 들키면 하마 밥이에요.</p>
-      <Scene
-        length={10}
-        pawns={[
-          { player: 0, pos: 3 },
-          { player: 1, pos: 7 },
-        ]}
-        crowd={[
-          { reserve: 3, finished: 1 },
-          { reserve: 4, finished: 0 },
-        ]}
-      />
+      <StageView state={HERO} />
 
       <section className="panel form">
       <label htmlFor="name">닉네임</label>

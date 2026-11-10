@@ -1,30 +1,14 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { BLANK } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import type { RoomView } from '@bluff-bridge/protocol/types';
-import { Bone, Die, Hippo, Pawn } from './pixel.tsx';
-import { Scene } from './Scene.tsx';
+import { Die, Pawn } from './pixel.tsx';
+import { StageView } from './stage/StageView.tsx';
+import type { ChompCue } from './stage/StageView.tsx';
+import type { StageState } from './stage/Stage.ts';
 import { useRoom } from './useRoom.ts';
 
 type Challenged = Extract<GameEvent, { type: 'challenged' }>;
-/** 긴장 → 주사위 공개 → 추락(하마가 입을 벌림) → 콰직 → 끝 */
-type RevealStage = 'suspense' | 'reveal' | 'fall' | 'chomp' | 'done';
-
-/** 피 방울: [가로로 튀는 거리, 세로로 튀는 거리(음수 = 위), 크기] (px) */
-const BLOOD: [number, number, number][] = [
-  [-96, -70, 9],
-  [-70, -104, 6],
-  [-40, -124, 9],
-  [-14, -92, 6],
-  [18, -130, 9],
-  [46, -98, 6],
-  [74, -112, 9],
-  [100, -62, 6],
-  [-118, -28, 6],
-  [122, -22, 9],
-  [-56, -46, 12],
-  [60, -40, 12],
-];
 
 const face = (die: number | null) => (die === null ? '?' : die === BLANK ? '꽝' : String(die));
 
@@ -59,80 +43,6 @@ function describe(e: GameEvent, g: PlayerView): string | null {
     default:
       return null;
   }
-}
-
-/** 의심 결과 연출. 이 게임에서 가장 힘을 준 장면이다. */
-function Reveal({ event, game, onDone }: { event: Challenged; game: PlayerView; onDone: () => void }) {
-  const [stage, setStage] = useState<RevealStage>('suspense');
-  const button = useRef<HTMLButtonElement>(null);
-
-  useEffect(() => {
-    const timers = [
-      setTimeout(() => setStage('reveal'), 1000),
-      setTimeout(() => setStage('fall'), 2400),
-      setTimeout(() => setStage('chomp'), 3150),
-      setTimeout(() => setStage('done'), 4300),
-    ];
-    return () => timers.forEach(clearTimeout);
-  }, [event]);
-  useEffect(() => {
-    if (stage === 'done') button.current?.focus();
-  }, [stage]);
-
-  const shown = stage !== 'suspense';
-  const eaten = stage === 'chomp' || stage === 'done';
-  const victim = game.players[event.fallen]?.name ?? '?';
-
-  return (
-    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="reveal-title">
-      <div className={'panel reveal ' + stage}>
-        <h2 id="reveal-title">{!shown ? '진실일까?' : event.truth ? '진실!' : '뻥이야!'}</h2>
-        <div className="compare">
-          <span>
-            선언 <b>{event.claim}</b>
-          </span>
-          <Die value={shown ? event.die : null} big shaking={!shown} />
-          <span>
-            실제 <b>{shown ? face(event.die) : '?'}</b>
-          </span>
-        </div>
-
-        <div className="pit">
-          <div className="pitPlank" />
-          {!eaten && <Pawn player={event.fallen} scale={4} className="victimPawn" />}
-          {stage === 'chomp' && <span className="crunch">콰직!</span>}
-          {eaten && (
-            <>
-              {/* 피: 입에서 사방으로 튀는 방울과 물에 번지는 얼룩 */}
-              <div className="blood">
-                {BLOOD.map(([dx, dy, size], i) => (
-                  <i key={i} style={{ ['--dx' as string]: `${dx}px`, ['--dy' as string]: `${dy}px`, width: size, height: size }} />
-                ))}
-              </div>
-              <div className="bloodPool" />
-            </>
-          )}
-          {stage === 'done' && (
-            <>
-              <Bone className="bone" />
-              <span className="burp">꺼억</span>
-            </>
-          )}
-          <div className="pitHippo">
-            <Hippo scale={5} open={stage === 'fall'} />
-          </div>
-          <div className="waves" />
-        </div>
-
-        <p className="victim" aria-live="assertive">
-          {eaten ? `${victim}의 말이 하마에게 먹혔어요.` : ' '}
-        </p>
-        <button ref={button} disabled={stage !== 'done'} onClick={onDone}>
-          계속
-        </button>
-      </div>
-    </div>
-  );
 }
 
 function Plates({ game, me }: { game: PlayerView; me: number }) {
@@ -239,7 +149,8 @@ function Actions({ room, game, send }: { room: RoomView; game: PlayerView; send:
 
 export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: () => void }) {
   const { room, deadline, conn, error, fatal, send } = useRoom(code, userId);
-  const [reveal, setReveal] = useState<Challenged | null>(null);
+  /** 무대에서 재생 중인 추락 연출. 끝날 때까지 조작을 막는다. */
+  const [cue, setCue] = useState<ChompCue | null>(null);
   const [log, setLog] = useState<string[]>([]);
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
@@ -254,13 +165,40 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     if (!game || first) return;
     const lines = room.events.flatMap((e) => describe(e, game) ?? []);
     if (lines.length) setLog((l) => [...lines.reverse(), ...l].slice(0, 12));
-    const challenged = room.events.find((e): e is Challenged => e.type === 'challenged');
-    if (challenged) setReveal(challenged);
+    const hit = room.events.find((e): e is Challenged => e.type === 'challenged');
+    if (hit) {
+      setCue({
+        id: room.seq,
+        fallen: hit.fallen,
+        other: hit.fallen === hit.roller ? hit.challenger : hit.roller,
+        claim: hit.claim,
+        die: hit.die,
+        truth: hit.truth,
+        victimName: game.players[hit.fallen]?.name ?? '?',
+      });
+    }
   }, [room]);
 
   useEffect(() => {
     if (room?.status === 'lobby') setLog([]);
   }, [room?.status]);
+
+  // 무대에 넘길 상태. 내용이 같으면 같은 객체를 유지해 무대가 불필요하게 다시 그리지 않게 한다.
+  const game = room?.game ?? null;
+  const stageKey = JSON.stringify(
+    game && room?.status !== 'lobby'
+      ? [game.rules.bridgeLength, game.players.map((p) => [p.pos, p.reserve, p.finished]), room?.status === 'playing' ? game.turn : null]
+      : [10, (room?.seats ?? []).map(() => [0, 0, 0]), null],
+  );
+  const stageState = useMemo<StageState>(() => {
+    const [length, players, active] = JSON.parse(stageKey) as [number, [number | null, number, number][], number | null];
+    return {
+      length,
+      pawns: players.map((p) => p[0]),
+      crowd: players.map((p) => ({ reserve: p[1], finished: p[2] })),
+      active,
+    };
+  }, [stageKey]);
 
   async function copyLink() {
     try {
@@ -298,9 +236,9 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     );
   }
 
-  const game = room.game;
   const me = room.seats[room.me];
   const winner = game?.winner ?? null;
+  const inGame = game && room.status !== 'lobby';
   // 상대가 나가거나 접속이 끊겨 끝난 판이면 결과 화면에 따로 알린다.
   const forfeitEvent = room.status === 'over' ? room.events.find((e) => e.type === 'forfeit') : undefined;
   const forfeiter = forfeitEvent?.type === 'forfeit' ? forfeitEvent.player : null;
@@ -308,7 +246,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   // 팝업은 main 밖에 둔다. main이 inert가 되면 그 안의 버튼도 눌리지 않기 때문.
   return (
     <>
-      <main className="room" inert={reveal || confirmLeave ? true : undefined}>
+      <main className="room" inert={confirmLeave ? true : undefined}>
         <header>
           <span>
             방 <b>{code}</b>
@@ -329,52 +267,48 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
           </span>
         </header>
 
+        {inGame && <Plates game={game} me={room.me} />}
+        <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} />
+
         {room.status === 'lobby' && (
-          <>
-            <Scene length={10} pawns={room.seats.map((_, i) => ({ player: i, pos: 0 }))} />
-            <section className="panel">
-              <h2>
-                {room.auto
-                  ? '상대가 들어오는 중…'
-                  : room.seats.length < 2
-                    ? '친구를 기다리는 중…'
-                    : '둘 다 준비하면 시작해요.'}
-              </h2>
-              <ul className="seats">
-                {[0, 1].map((i) => {
-                  const s = room.seats[i];
-                  return (
-                    <li key={i}>
-                      <Pawn player={i} scale={2} />
-                      {s ? s.name : '빈자리'}
-                      {i === room.me && <small> (나)</small>}
-                      <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
-                    </li>
-                  );
-                })}
-              </ul>
-              {room.auto ? (
-                <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
-              ) : (
-                <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
-                  {me?.ready ? '준비 취소' : '준비 완료'}
-                </button>
-              )}
-            </section>
-          </>
+          <section className="panel">
+            <h2>
+              {room.auto
+                ? '상대가 들어오는 중…'
+                : room.seats.length < 2
+                  ? '친구를 기다리는 중…'
+                  : '둘 다 준비하면 시작해요.'}
+            </h2>
+            <ul className="seats">
+              {[0, 1].map((i) => {
+                const s = room.seats[i];
+                return (
+                  <li key={i}>
+                    <Pawn player={i} scale={2} />
+                    {s ? s.name : '빈자리'}
+                    {i === room.me && <small> (나)</small>}
+                    <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
+                  </li>
+                );
+              })}
+            </ul>
+            {room.auto ? (
+              <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
+            ) : (
+              <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
+                {me?.ready ? '준비 취소' : '준비 완료'}
+              </button>
+            )}
+          </section>
         )}
 
-        {game && room.status !== 'lobby' && (
+        {inGame && (
           <>
-            <Plates game={game} me={room.me} />
-            <Scene
-              length={game.rules.bridgeLength}
-              pawns={game.players.map((p, i) => ({ player: i, pos: p.pos }))}
-              crowd={game.players.map((p) => ({ reserve: p.reserve, finished: p.finished }))}
-              active={room.status === 'playing' ? game.turn : null}
-            />
-            <section className="panel" aria-live="polite">
-              {room.status === 'playing' ? (
+            {/* 추락 연출이 끝날 때까지는 결과와 다음 행동을 가려 둔다(연출보다 먼저 결말이 보이지 않게). */}
+            <section className="panel" aria-live="polite" inert={cue ? true : undefined}>
+              {cue ? (
+                <h2>하마가 입맛을 다시는 중…</h2>
+              ) : room.status === 'playing' ? (
                 <>
                   <Countdown deadline={deadline} />
                   <Actions room={room} game={game} send={send} />
@@ -407,7 +341,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                 </p>
               )}
             </section>
-            {log.length > 0 && (
+            {log.length > 0 && !cue && (
               <section className="log">
                 {log.map((line, i) => (
                   <p key={log.length - i}>{line}</p>
@@ -418,7 +352,6 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         )}
       </main>
 
-      {reveal && game && <Reveal event={reveal} game={game} onDone={() => setReveal(null)} />}
       {confirmLeave && (
         <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="leave-title">
           <div className="panel">

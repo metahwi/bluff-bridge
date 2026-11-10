@@ -1,6 +1,10 @@
 import { useEffect, useState } from 'react';
 import type { MatchMessage } from '@bluff-bridge/protocol/types';
-import { Scene } from './Scene.tsx';
+import { StageView } from './stage/StageView.tsx';
+import type { StageState } from './stage/Stage.ts';
+
+/** 대기 중: 내 말 하나가 출발 지점에서 기다린다. */
+const WAITING: StageState = { length: 10, pawns: [0], crowd: [{ reserve: 4, finished: 0 }], active: 0 };
 
 /** 빠른 매칭 대기 화면. 대기열에 연결해 두었다가 짝이 정해지면 방 코드를 받는다. */
 export function Matching({ onMatched, onCancel }: { onMatched: (code: string) => void; onCancel: () => void }) {
@@ -60,7 +64,7 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
 
   return (
     <main className="home">
-      <Scene length={10} pawns={[{ player: 0, pos: 0 }]} active={0} />
+      <StageView state={WAITING} />
       <section className="panel">
         <h2>상대를 찾는 중…</h2>
         <p>{seconds}초 지남</p>
