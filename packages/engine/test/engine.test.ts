@@ -5,6 +5,7 @@ import {
   RULES,
   awaiting,
   createGame,
+  forfeit,
   reduce,
   timeoutAction,
   viewEvent,
@@ -169,6 +170,26 @@ describe('4인', () => {
     let s = play(toRespond(s1, 1, 1), 3, { type: 'accept' }).state;
     s = play(toRespond(s, 1, 1), 0, { type: 'accept' }).state;
     expect([s.turn, s.responder]).toEqual([0, 2]);
+  });
+});
+
+describe('기권', () => {
+  it('2인에서 기권하면 완주 수와 상관없이 상대가 이긴다', () => {
+    const s0 = createGame(['a', 'b']);
+    s0.players[0]!.finished = 1;
+    const { state, events } = forfeit(s0, 0);
+    expect([state.phase, state.winner]).toEqual(['over', 1]);
+    expect(events.map((e) => e.type)).toEqual(['forfeit', 'over']);
+  });
+
+  it('4인에서 굴릴 차례인 사람이 기권하면 다음 사람 차례가 된다', () => {
+    const s = forfeit(toRespond(createGame(['a', 'b', 'c', 'd']), 3, 3), 0).state;
+    expect([s.phase, s.turn, s.responder, s.die, s.claim]).toEqual(['roll', 1, 2, null, null]);
+  });
+
+  it('4인에서 응답할 사람이 기권하면 그 다음 사람이 응답한다', () => {
+    const s = forfeit(toRespond(createGame(['a', 'b', 'c', 'd']), 3, 3), 1).state;
+    expect([s.phase, s.turn, s.responder, s.claim]).toEqual(['respond', 0, 2, 3]);
   });
 });
 

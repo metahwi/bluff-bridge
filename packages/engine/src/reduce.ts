@@ -133,6 +133,37 @@ export function reduce(
   return { state, events };
 }
 
+/** 기권(나가기·접속 끊김). 완주 수와 상관없이 남은 사람이 한 명이면 그 사람이 이긴다. */
+export function forfeit(prev: GameState, player: number): { state: GameState; events: GameEvent[] } {
+  if (prev.phase === 'over') throw new GameError('게임이 끝났어요.');
+  const state = structuredClone(prev);
+  const p = state.players[player];
+  if (!p || p.out) throw new GameError('기권할 수 없어요.');
+  const events: GameEvent[] = [{ type: 'forfeit', player }];
+  p.out = true;
+  p.pos = null;
+  p.reserve = 0;
+
+  const active = state.players.flatMap((q, i) => (q.out ? [] : [i]));
+  if (active.length === 1) {
+    state.phase = 'over';
+    state.winner = active[0]!;
+    state.die = null;
+    state.claim = null;
+    events.push({ type: 'over', winner: state.winner });
+  } else if (state.turn === player) {
+    state.die = null;
+    state.claim = null;
+    state.turn = nextActive(state, player);
+    state.responder = nextActive(state, state.turn);
+    state.phase = 'roll';
+    state.round++;
+  } else if (state.responder === player) {
+    state.responder = nextActive(state, state.turn);
+  }
+  return { state, events };
+}
+
 /** 제한 시간이 지났을 때 서버가 대신 두는 수. */
 export function timeoutAction(state: GameState, rng: Rng): Action {
   switch (state.phase) {

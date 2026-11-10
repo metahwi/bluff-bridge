@@ -51,6 +51,7 @@ export type GameEvent =
     }
   | { type: 'finished'; player: number }
   | { type: 'out'; player: number }
+  | { type: 'forfeit'; player: number }
   | { type: 'over'; winner: number };
 
 export function nextActive(state: GameState, from: number): number {

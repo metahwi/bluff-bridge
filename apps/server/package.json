@@ -1,0 +1,21 @@
+{
+  "name": "@bluff-bridge/server",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev": "wrangler dev",
+    "typecheck": "tsc --noEmit",
+    "e2e": "node scripts/e2e.ts"
+  },
+  "dependencies": {
+    "@bluff-bridge/engine": "*",
+    "@bluff-bridge/protocol": "*",
+    "hono": "^4.13.17"
+  },
+  "devDependencies": {
+    "@cloudflare/workers-types": "^5.20261110.1",
+    "typescript": "^5.9.3",
+    "wrangler": "^4.159.0"
+  }
+}

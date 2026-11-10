@@ -5,6 +5,10 @@
   "workspaces": ["packages/*", "apps/*"],
   "scripts": {
     "test": "npm run test --workspaces --if-present",
-    "sim": "npm run sim -w @bluff-bridge/engine"
+    "sim": "npm run sim -w @bluff-bridge/engine",
+    "typecheck": "npm run typecheck --workspaces --if-present",
+    "build": "npm run build -w @bluff-bridge/web",
+    "start": "npm run build && npm run dev -w @bluff-bridge/server",
+    "e2e": "npm run e2e -w @bluff-bridge/server"
   }
 }
