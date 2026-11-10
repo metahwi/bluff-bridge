@@ -74,7 +74,7 @@ export function StageView({
         sound.duck(true);
         sound.play('suspense');
       } else if (p === 'reveal') sound.play(truth.current ? 'truth' : 'lie');
-      else if (p === 'fall' || p === 'kick' || p === 'rope' || p === 'push') sound.play('whoosh');
+      else if (p === 'fall' || p === 'kick' || p === 'rope') sound.play('whoosh');
       else if (p === 'chomp') sound.play('crunch');
       else if (p === 'burp') setTimeout(() => sound.play('burp'), 300);
       else if (p === 'done') sound.duck(false);
@@ -146,7 +146,6 @@ export function StageView({
           </div>
           {phase === 'kick' && <span className="sfx sfxKick">뻥!</span>}
           {phase === 'rope' && <span className="sfx sfxKick">휙!</span>}
-          {phase === 'push' && <span className="sfx sfxKick">퍽!</span>}
           {phase === 'chomp' && <span className="sfx sfxCrunch">콰직!</span>}
           {phase === 'chew' && <span className="sfx sfxMunch">우적우적</span>}
           {phase === 'burp' && <span className="sfxBurp">꺼억</span>}

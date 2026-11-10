@@ -26,7 +26,7 @@ export interface ChompInfo {
 }
 
 /** 추락 연출의 단계. 화면 위 글자(HTML)를 바꾸는 데 쓴다. */
-export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'kick' | 'rope' | 'push' | 'chomp' | 'chew' | 'burp' | 'done';
+export type ChompPhase = 'suspense' | 'reveal' | 'fall' | 'kick' | 'rope' | 'chomp' | 'chew' | 'burp' | 'done';
 
 export interface StageLabel {
   key: string;
@@ -121,7 +121,7 @@ export class Stage {
   onPhase: (phase: ChompPhase) => void = () => {};
   onLabels: (labels: StageLabel[]) => void = () => {};
   /** 장면 속 움직임에 맞춰 낼 효과음. */
-  onSfx: (name: 'hop' | 'step' | 'kick' | 'rope' | 'push' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
+  onSfx: (name: 'hop' | 'step' | 'kick' | 'rope' | 'splash' | 'munch' | 'bone' | 'throw' | 'dice' | 'cup') => void = () => {};
   private dice = new DiceHud();
 
   private renderer: THREE.WebGLRenderer;
@@ -684,19 +684,13 @@ export class Stage {
     /**
      * 상황에 맞는 장면을 고른다.
      *  육지: 상대 말이 다리 위 멀리(3칸 이상) 있으면 거기서 올가미를 던지고(rope), 가까이 있으면 달려와 찬다(kick).
-     *  다리: 상대 말이 바로 옆 칸(또는 같은 칸)에 있으면 밀치고(push), 아니면 널빤지가 꺼진다(plank).
+     *  다리: 언제나 발밑 널빤지가 꺼져 그 자리에서 떨어진다(plank). 밧줄과 발차기는 육지의 말에게만 쓴다.
      */
     const rivalPos = other?.pos ?? null;
-    const variant: 'kick' | 'rope' | 'push' | 'plank' = onLand
-      ? rivalPos !== null && rivalPos >= 3
-        ? 'rope'
-        : 'kick'
-      : rivalPos !== null && rivalPos >= 1 && Math.abs(rivalPos - plankNo) <= 1
-        ? 'push'
-        : 'plank';
+    const variant: 'kick' | 'rope' | 'plank' = !onLand ? 'plank' : rivalPos !== null && rivalPos >= 3 ? 'rope' : 'kick';
     /** 말이 공중에 떠 있는 시간과 포물선의 높이. */
-    const flight = { kick: 0.66, rope: 0.72, push: 0.56, plank: 0.52 }[variant];
-    const arcHeight = { kick: 2.4, rope: 1.25, push: 1.5, plank: 1.05 }[variant];
+    const flight = { kick: 0.66, rope: 0.72, plank: 0.52 }[variant];
+    const arcHeight = { kick: 2.4, rope: 1.25, plank: 1.05 }[variant];
     let kicker: THREE.Group | null = null;
     /** 장면이 끝나면 치울 소품(밧줄 등). */
     const props: THREE.Object3D[] = [];
@@ -744,24 +738,6 @@ export class Stage {
         rival.group.rotation.z = -0.4 * Math.sin(k * Math.PI);
       });
       this.at(T + flight, () => (rope.visible = loop.visible = false));
-    } else if (variant === 'push' && other) {
-      // 3-라. 바로 옆에 있던 상대 말이 다가와 난간 너머로 밀친다
-      const rival = other;
-      rival.moving = true;
-      const home = rival.base.clone();
-      const side = Math.sign(X - home.x) || 1;
-      const beside = new THREE.Vector3(X - side * 0.6, stand.y, stand.z - 0.15);
-      this.hop(rival, home, beside, T - 0.34, 0.28);
-      this.at(T, () => {
-        this.onPhase('push');
-        this.onSfx('push');
-        this.shake = 0.3;
-      });
-      this.tween(T - 0.03, 0.1, (k) => {
-        rival.group.position.x = beside.x + side * 0.3 * k;
-        rival.group.position.z = beside.z + 0.3 * k;
-      }, easeOut);
-      this.hop(rival, beside.clone().add(new THREE.Vector3(side * 0.3, 0, 0.3)), home, T + 0.4, 0.28);
     } else if (onLand) {
       // 3-가. 상대 팀 말이 뒤에서 달려와 뻥 찬다
       const rival = info.other ?? (info.fallen + 1) % Math.max(2, this.pawns.length);
