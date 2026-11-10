@@ -113,6 +113,34 @@ export function Hippo({ scale = 2, open = false, className = '' }: { scale?: num
   );
 }
 
+/** g 잎 외곽, G 잎, L 햇빛 받는 잎, D 그늘진 잎, t 줄기 외곽, T 줄기 */
+const TREE = [
+  '...ggGg....',
+  '..gGGGGgg..',
+  '.gGLLGGGGg.',
+  'gGLLLGGGGGg',
+  'gGGLGGGGDGg',
+  'gGGGGGGDDGg',
+  'gGGGGDDDDGg',
+  '.gGDDDDDDg.',
+  '..ggDDDgg..',
+  '....tTt....',
+  '....tTt....',
+  '...ttTtt...',
+] as const;
+
+/** 언덕 위의 나무. 그림자는 CSS(.tree)에서 붙인다. */
+export function Tree({ scale = 3, className = '' }: { scale?: number; className?: string }) {
+  return (
+    <Sprite
+      rows={TREE}
+      scale={scale}
+      className={className}
+      palette={{ g: '#2f6b3a', G: '#4fa84e', L: '#9be06f', D: '#3b8744', t: '#3a2414', T: '#8a5527' }}
+    />
+  );
+}
+
 const BONE = ['ww...ww', '.wwwww.', 'ww...ww'] as const;
 
 export function Bone({ scale = 3, className = '' }: { scale?: number; className?: string }) {

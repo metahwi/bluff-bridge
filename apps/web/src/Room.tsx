@@ -370,6 +370,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             <Scene
               length={game.rules.bridgeLength}
               pawns={game.players.map((p, i) => ({ player: i, pos: p.pos }))}
+              crowd={game.players.map((p) => ({ reserve: p.reserve, finished: p.finished }))}
               active={room.status === 'playing' ? game.turn : null}
             />
             <section className="panel" aria-live="polite">

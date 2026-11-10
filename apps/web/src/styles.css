@@ -171,47 +171,6 @@ header {
 .pawn.p3 { color: var(--p3); }
 .pawn.hop { animation: hop 0.5s steps(2) infinite alternate; }
 
-/* 다리 장면 */
-.scene {
-  position: relative;
-  height: 264px;
-  overflow: hidden;
-  border: 3px solid var(--ink);
-  box-shadow: 4px 4px 0 rgb(58 36 20 / 0.35);
-  background: linear-gradient(var(--sky-light) 0 30%, var(--sky) 30% 100%);
-}
-.cloud { position: absolute; height: 9px; background: #fff; box-shadow: 9px -6px 0 #fff, 21px -3px 0 #fff; }
-.cloud.c1 { top: 26px; left: 14%; width: 36px; }
-.cloud.c2 { top: 44px; left: 66%; width: 48px; }
-
-.bank { position: absolute; top: 96px; bottom: 0; width: 13%; z-index: 3; background: linear-gradient(var(--grass) 0 9px, var(--grass-dark) 9px 12px, var(--dirt) 12px 60%, var(--dirt-dark) 60%); }
-.bank.left { left: 0; border-right: 3px solid var(--ink); }
-.bank.right { right: 0; border-left: 3px solid var(--ink); }
-/* 밧줄을 묶은 말뚝 */
-.bank::before { content: ''; position: absolute; top: -24px; width: 6px; height: 24px; background: var(--wood-dark); border: 3px solid var(--ink); border-bottom: 0; box-sizing: content-box; }
-.bank.left::before { right: 0; }
-.bank.right::before { left: 0; }
-.sign { position: absolute; top: 18px; left: 0; right: 0; text-align: center; font-family: Galmuri9, Galmuri11, sans-serif; font-size: 10px; color: var(--paper); }
-
-.bridge { position: absolute; top: 96px; left: 13%; right: 13%; display: grid; z-index: 2; border-top: 3px solid var(--ink); border-bottom: 3px solid var(--ink); }
-/* 밧줄 난간 */
-.bridge::before { content: ''; position: absolute; left: 0; right: 0; top: -21px; border-top: 3px dashed var(--wood-dark); }
-.plank { position: relative; height: 18px; background: var(--wood); box-shadow: inset 0 -5px 0 var(--wood-dark); border-right: 3px solid var(--ink); display: grid; place-items: center; }
-.plank:last-child { border-right: 0; }
-.plank > span { font-family: Galmuri9, Galmuri11, sans-serif; font-size: 10px; line-height: 1; color: #4a2c12; }
-.standing { position: absolute; bottom: 100%; left: 50%; transform: translateX(-50%); display: flex; margin-bottom: 3px; }
-.bank .standing { margin-bottom: 0; }
-.standing .pawn + .pawn { margin-left: -10px; }
-
-.river { position: absolute; left: 0; right: 0; top: 150px; bottom: 0; z-index: 1; background: repeating-linear-gradient(var(--water) 0 12px, var(--water-light) 12px 15px, var(--water) 15px 33px); }
-/* 물 위로 머리만 내민 하마. .peek이 물에 잠긴 부분을 잘라 낸다. */
-.swimmer { position: absolute; animation: bob 1.6s steps(2) infinite alternate; }
-.peek { overflow: hidden; }
-.ripple { display: block; height: 3px; margin: 0 -9px; background: repeating-linear-gradient(90deg, #d8f3fb 0 9px, transparent 9px 12px); }
-.ripple::after { content: ''; display: block; height: 3px; margin: 6px 12px 0; background: repeating-linear-gradient(90deg, var(--water-light) 0 6px, transparent 6px 12px); }
-.waves { position: absolute; left: 0; right: 0; bottom: 0; height: 20px; z-index: 4; background: var(--water-deep); }
-.waves::before { content: ''; position: absolute; left: 0; width: calc(100% + 24px); top: -6px; height: 6px; background: repeating-linear-gradient(90deg, var(--water-deep) 0 12px, transparent 12px 24px); animation: drift 1.2s steps(4) infinite; }
-
 /* 하마 */
 .hippo { display: inline-flex; flex-direction: column; align-items: center; }
 .hippo .mouth { position: relative; width: calc(20 * var(--s)); height: 0; background: #d94f6a; border-left: var(--s) solid #3a2a33; border-right: var(--s) solid #3a2a33; box-sizing: content-box; box-shadow: inset 0 calc(3 * var(--s)) 0 #8f2740; transition: height 60ms steps(2); overflow: hidden; }

@@ -152,6 +152,10 @@ export function App() {
           { player: 0, pos: 3 },
           { player: 1, pos: 7 },
         ]}
+        crowd={[
+          { reserve: 3, finished: 1 },
+          { reserve: 4, finished: 0 },
+        ]}
       />
 
       <section className="panel form">
