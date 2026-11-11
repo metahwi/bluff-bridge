@@ -63,6 +63,12 @@ interface Pawn {
   pos: number | null;
   /** 깡충 이동이나 연출 중이면 true(제자리 움직임을 멈춘다). */
   moving: boolean;
+  /**
+   * 추락 연출이 이 말을 직접 움직이는 중이면 true.
+   * moving과 따로 둔다: 이전의 짧은 애니메이션(새 말 등장, 깡충 이동)이 끝나면서 moving을 꺼도
+   * 연출 중인 말이 제자리로 끌려 돌아가지 않게 하기 위해서다.
+   */
+  locked: boolean;
   base: THREE.Vector3;
 }
 
@@ -454,7 +460,7 @@ export class Stage {
   private updatePawns(): void {
     const t = this.reduced ? 0 : this.time;
     this.pawns.forEach((p, i) => {
-      if (p.moving || p.pos === null) return;
+      if (p.moving || p.locked || p.pos === null) return;
       const active = this.state?.active === i && !this.busy;
       const bounce = active ? Math.abs(Math.sin(t * 6)) * 0.16 : 0;
       p.group.position.set(p.base.x, p.base.y + bounce, p.base.z);
@@ -492,7 +498,7 @@ export class Stage {
       group.rotation.y = 0.35;
       group.visible = false;
       this.scene.add(group);
-      this.pawns.push({ group, pos: null, moving: false, base: new THREE.Vector3() });
+      this.pawns.push({ group, pos: null, moving: false, locked: false, base: new THREE.Vector3() });
     }
 
     this.pawns.forEach((p, i) => {
@@ -642,7 +648,12 @@ export class Stage {
     const onLand = !victim.pos || victim.pos < 1;
     const plankNo = onLand ? 0 : Math.min(victim.pos!, state.length);
     const stand = this.spot(info.fallen, plankNo, state.length);
-    victim.moving = true;
+    victim.locked = true;
+    if (other && other.pos !== null && !other.moving) {
+      // 상대 말도 연출 동안 붙잡아 둔다(같이 떨고, 올가미를 던진다)
+      other.locked = true;
+      other.group.position.copy(other.base);
+    }
     victim.group.visible = true;
     victim.group.position.copy(stand);
 
@@ -658,7 +669,7 @@ export class Stage {
     this.tween(0.45, 1.5, () => {
       const j = Math.sin(this.time * 70) * 0.03;
       victim.group.position.x = X + j;
-      if (other && !other.moving && other.pos !== null) other.group.position.x = other.base.x - j;
+      if (other && other.pos !== null) other.group.position.x = other.base.x - j;
     });
 
     // 다리 밑 하마 중 가장 가까운 녀석이 물속으로 사라졌다가, 말 바로 앞 물에서 눈만 내밀고 기다린다
@@ -702,11 +713,13 @@ export class Stage {
     let kicker: THREE.Group | null = null;
     /** 장면이 끝나면 치울 소품(밧줄 등). */
     const props: THREE.Object3D[] = [];
+    /** 올가미에 걸렸을 때 말과 밧줄을 함께 움직이는 함수(0~1). 없으면 포물선으로 난다. */
+    let pull: ((k: number) => void) | null = null;
 
     if (variant === 'rope' && other) {
       // 3-다. 다리 위의 상대 말이 올가미를 던져 홱 잡아당긴다
       const rival = other;
-      rival.moving = true;
+      rival.locked = true;
       // 다리 난간 밧줄과 헷갈리지 않게 더 밝고 굵게
       const rope = box([0.1, 0.1, 1], '#fff8e7');
       rope.castShadow = false;
@@ -730,7 +743,10 @@ export class Stage {
         rope.visible = loop.visible = true;
         rival.group.rotation.y = -Math.PI / 2; // 출발 지점 쪽을 본다
       });
-      const neck = stand.clone().setY(stand.y + 0.6);
+      /** 말의 목 높이(말 자신의 좌표). 올가미는 항상 이 점에 걸려 있어야 한다. */
+      const NECK = new THREE.Vector3(0, 0.6 * PAWN_SIZE, 0);
+      const ring = new THREE.Quaternion().setFromEuler(new THREE.Euler(Math.PI / 2, 0, 0));
+      const neck = stand.clone().add(NECK);
       this.tween(T - 0.3, 0.28, (k) => {
         const tip = hand().lerp(neck, k);
         tip.y += Math.sin(k * Math.PI) * 1.3;
@@ -739,12 +755,29 @@ export class Stage {
       this.at(T, () => {
         this.onPhase('rope');
         this.shake = 0.25;
+        loop.scale.setScalar(0.72); // 목에 걸려 조여진다
       });
-      // 당기는 동안 밧줄이 끌려오는 말을 따라 줄어든다(말의 위치는 아래 포물선에서 먼저 갱신된다)
-      this.tween(T, flight, (k) => {
-        stretch(victim.group.position.clone().setY(victim.group.position.y + 0.75));
-        rival.group.rotation.z = -0.4 * Math.sin(k * Math.PI);
-      });
+      // 끌려가는 길: 목이 걸린 채 땅 위를 질질 끌려 물가까지 간 뒤, 언덕에서 떨어져 하마 입으로.
+      // 말의 자세를 먼저 정하고, 그 말의 실제 목 위치에 밧줄 끝을 묶는다(한 번에 계산해야 어긋나지 않는다).
+      const edge = new THREE.Vector3(-BRIDGE_HALF + 0.15, BANK_TOP, lerp(stand.z, mouth.z, 0.5));
+      pull = (k) => {
+        const g = victim.group;
+        if (k < 0.4) {
+          const q = (k / 0.4) ** 2;
+          g.position.lerpVectors(stand, edge, q);
+          g.rotation.set(0, 0.35, -1.15 * Math.min(1, (k / 0.4) * 2.5)); // 머리가 당겨지는 쪽으로 넘어진다
+        } else {
+          const q = (k - 0.4) / 0.6;
+          g.position.lerpVectors(edge, mouth, q);
+          g.position.y += Math.sin(q * Math.PI) * 0.7;
+          g.rotation.set(q * 4, 0.35, -1.15 - q * 1.6);
+        }
+        g.scale.setScalar(1);
+        g.updateMatrixWorld(true);
+        stretch(g.localToWorld(NECK.clone()));
+        loop.quaternion.copy(g.quaternion).multiply(ring); // 고리가 목을 두른 방향으로 같이 기운다
+        rival.group.rotation.z = -0.45 * Math.sin(k * Math.PI); // 당기는 쪽은 몸을 뒤로 젖힌다
+      };
       this.at(T + flight, () => (rope.visible = loop.visible = false));
     } else if (onLand) {
       // 3-가. 상대 팀 말이 뒤에서 달려와 뻥 찬다
@@ -795,13 +828,12 @@ export class Stage {
       this.tween(T + 3.6, 0.3, (k) => (plank.rotation.x = 1.15 * (1 - k)), easeOut);
     }
 
-    // 말이 포물선을 그리며 하마 입으로
+    // 말이 하마 입으로 간다. 올가미에 걸렸으면 끌려가고, 아니면 포물선을 그리며 빙글빙글 돈다.
     this.tween(T + 0.02, flight - 0.02, (k) => {
+      if (pull) return pull(k);
       const arc = Math.sin(k * Math.PI) * arcHeight;
       victim.group.position.set(lerp(X, HX, k), lerp(stand.y, mouth.y, k) + arc, lerp(stand.z, mouth.z, k));
-      // 차이거나 떨어질 때는 빙글빙글 돌고, 올가미에 끌려갈 때는 목이 당겨진 채 버둥거린다
-      if (variant === 'rope') victim.group.rotation.set(0.5 * k, 0.35, -0.8 * Math.sin(k * Math.PI));
-      else victim.group.rotation.set(k * 7, 0.35, k * (variant === 'kick' ? 9 : 2.5));
+      victim.group.rotation.set(k * 7, 0.35, k * (variant === 'kick' ? 9 : 2.5));
       victim.group.scale.setScalar(1);
     });
 
@@ -882,10 +914,10 @@ export class Stage {
         if (other) {
           // 올가미를 던지거나 밀쳤던 상대 말을 제자리로
           other.group.rotation.set(0, 0.35, 0);
-          other.moving = false;
+          other.locked = false;
         }
         victim.group.rotation.set(0, 0.35, 0);
-        victim.moving = false;
+        victim.locked = false;
         this.busy = false;
         this.view = { ...VIEW };
         this.onPhase('done');
