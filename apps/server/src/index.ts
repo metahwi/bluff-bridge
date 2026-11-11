@@ -32,9 +32,14 @@ app.use('*', async (c, next) => {
   if (canonical) {
     const url = new URL(c.req.url);
     const home = new URL(canonical);
-    if (url.host !== home.host) return c.redirect(home.origin + url.pathname + url.search, 301);
+    // 주소가 다르거나 보안 연결(https)이 아니면 대표 주소로 넘긴다. http에서는 로그인 쿠키가 저장되지 않는다.
+    if (url.host !== home.host || url.protocol !== home.protocol) {
+      return c.redirect(home.origin + url.pathname + url.search, 301);
+    }
   }
   await next();
+  // 한 번 https로 들어온 브라우저는 앞으로 http 주소를 쳐도 스스로 https로 바꿔 열게 한다.
+  if (canonical?.startsWith('https://')) c.header('Strict-Transport-Security', 'max-age=31536000');
 });
 
 app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env, c.req.raw).handler(c.req.raw));

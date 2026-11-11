@@ -40,8 +40,7 @@ export function useMe() {
   return { me, error, reload };
 }
 
-/** 계정이 없으면 게스트로 만들고, 닉네임이 다르면 바꾼다. */
-export async function ensureGuest(me: Me | null, name: string): Promise<void> {
+async function signInAs(me: Me | null, name: string): Promise<void> {
   if (!me?.user) {
     const { error } = await authClient.signIn.anonymous();
     if (error) throw new Error(error.message ?? '입장하지 못했어요.');
@@ -49,6 +48,24 @@ export async function ensureGuest(me: Me | null, name: string): Promise<void> {
   if (me?.user?.name !== name) {
     const { error } = await authClient.updateUser({ name });
     if (error) throw new Error(error.message ?? '닉네임을 저장하지 못했어요.');
+  }
+}
+
+/**
+ * 계정이 없으면 게스트로 만들고, 닉네임이 다르면 바꾼다.
+ * 화면이 알고 있는 로그인 상태가 실제와 어긋났을 수 있다(다른 탭에서 로그인했거나, 로그인이 만료됨).
+ * 그래서 실패하면 서버에 실제 상태를 다시 물어보고 한 번 더 시도한다.
+ */
+export async function ensureGuest(me: Me | null, name: string): Promise<void> {
+  try {
+    await signInAs(me, name);
+  } catch {
+    try {
+      await signInAs(await fetchMe(), name);
+    } catch {
+      // 두 번 다 실패하면 이 브라우저가 로그인 쿠키를 저장하지 못하는 것이다.
+      throw new Error('입장 정보를 저장하지 못했어요. 브라우저의 쿠키 차단을 끄거나, 메신저 안의 창 대신 크롬·사파리 같은 브라우저로 열어 주세요.');
+    }
   }
 }
 
