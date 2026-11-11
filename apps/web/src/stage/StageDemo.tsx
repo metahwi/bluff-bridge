@@ -79,6 +79,16 @@ export function StageDemo({ mode }: { mode: string }) {
     return () => timers.forEach(clearTimeout);
   }, [mode]);
 
+  // 링크 미리보기 그림(1200×630)을 찍기 위한 화면: 로고와 게임판만.
+  if (mode === 'og') {
+    return (
+      <div className="ogShot">
+        <StageView state={{ ...BASE, pawns: [3, 6], dice: { mode: 'hidden', face: null } }} />
+        <h1 className="logo">하마하마</h1>
+      </div>
+    );
+  }
+
   return (
     <main className="room">
       <header>

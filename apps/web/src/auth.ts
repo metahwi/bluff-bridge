@@ -64,9 +64,24 @@ export async function ensureGuest(me: Me | null, name: string): Promise<void> {
       await signInAs(await fetchMe(), name);
     } catch {
       // 두 번 다 실패하면 이 브라우저가 로그인 쿠키를 저장하지 못하는 것이다.
-      throw new Error('입장 정보를 저장하지 못했어요. 브라우저의 쿠키 차단을 끄거나, 메신저 안의 창 대신 크롬·사파리 같은 브라우저로 열어 주세요.');
+      throw new CookieError();
     }
   }
+}
+
+/** 이 브라우저(주로 메신저 앱 안의 창)가 로그인 쿠키를 저장하지 못할 때. */
+export class CookieError extends Error {
+  constructor() {
+    super('입장 정보를 저장하지 못했어요. 브라우저의 쿠키 차단을 끄거나, 메신저 안의 창 대신 크롬·사파리 같은 브라우저로 열어 주세요.');
+  }
+}
+
+/** 카카오톡 앱 안의 창에서 열렸는지. */
+export const inKakaoTalk = typeof navigator !== 'undefined' && /KAKAOTALK/i.test(navigator.userAgent);
+
+/** 카카오톡 앱 안의 창에서 지금 주소를 기기의 기본 브라우저로 다시 연다. */
+export function openInBrowser(): void {
+  location.href = 'kakaotalk://web/openExternal?url=' + encodeURIComponent(location.href);
 }
 
 export function socialLogin(provider: string): void {

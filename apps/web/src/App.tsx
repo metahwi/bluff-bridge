@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { NAME_MAX, ROOM_CODE } from '@bluff-bridge/protocol/types';
-import { authClient, ensureGuest, socialLogin, useMe } from './auth.ts';
+import { CookieError, authClient, ensureGuest, inKakaoTalk, openInBrowser, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
@@ -63,6 +63,7 @@ export function App() {
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
+  const [cookieBlocked, setCookieBlocked] = useState(false);
 
   // 방 밖(첫 화면, 매칭 대기)에서는 마을 곡을 튼다.
   useEffect(() => {
@@ -102,6 +103,7 @@ export function App() {
       await reload();
       await next();
     } catch (e) {
+      setCookieBlocked(e instanceof CookieError);
       setError(e instanceof Error ? e.message : '문제가 생겼어요. 다시 시도해 주세요.');
     } finally {
       setBusy(false);
@@ -214,6 +216,12 @@ export function App() {
         <p className="error" role="alert">
           {error}
         </p>
+      )}
+      {/* 카카오톡 앱 안의 창이 로그인 정보를 저장하지 못하면, 기기의 브라우저로 다시 열게 한다. */}
+      {cookieBlocked && inKakaoTalk && (
+        <button className="ghost" onClick={openInBrowser}>
+          다른 브라우저로 열기
+        </button>
       )}
 
       </section>

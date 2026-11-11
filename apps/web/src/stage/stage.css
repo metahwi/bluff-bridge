@@ -78,6 +78,12 @@ main.room.lobby .seats li { padding: 12px 0; font-size: 18px; }
   to { clip-path: inset(0 0 0 0); }
 }
 
+/* 링크 미리보기 그림을 찍는 화면(개발용) */
+.ogShot { position: relative; width: 1200px; height: 630px; overflow: hidden; }
+.ogShot .stage { aspect-ratio: auto; height: 630px; max-height: none; border: 0; box-shadow: none; }
+.ogShot .stageLabel { display: none; }
+.ogShot .logo { position: absolute; left: 0; right: 0; top: 34px; font-size: 132px; }
+
 /* 결과 점수표: 게임판 위에 얹는다 */
 .board { position: relative; }
 .resultCard { position: absolute; inset: 0; z-index: 6; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 12px; padding: 16px; overflow-y: auto; background: rgb(20 12 6 / 0.72); text-align: center; animation: bars 0.3s steps(5); transform-origin: 50% 50%; }
