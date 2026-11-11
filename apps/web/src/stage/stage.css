@@ -64,6 +64,13 @@ main.home { max-width: 1040px; }
   main.home > .panel.form { grid-row: span 2; }
 }
 
+/* 빠른 매칭 대기: 안내판을 화면 가운데에 */
+main.home.matching { display: flex; flex-direction: column; align-items: center; }
+main.home.matching > .stage { width: 100%; }
+main.home.matching > .panel { width: min(520px, 100%); padding: 26px 22px; gap: 12px; }
+main.home.matching > .panel h2 { font-size: 30px; }
+.elapsed { font-size: 18px; font-variant-numeric: tabular-nums; }
+
 /* 대기실: 게임판 대신 방 정보가 주인공 */
 main.room.lobby { display: flex; flex-direction: column; height: auto; max-width: 1040px; }
 main.room.lobby .side { order: 3; display: flex; flex-direction: column; align-items: center; gap: 12px; }

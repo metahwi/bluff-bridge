@@ -1,11 +1,15 @@
 import { useEffect, useState } from 'react';
 import { RULES } from '@bluff-bridge/engine';
 import type { MatchMessage } from '@bluff-bridge/protocol/types';
+import { SettingsButton } from './Settings.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 
 /** 대기 중: 내 말 하나가 출발 지점에서 기다린다. */
 const WAITING: StageState = { length: RULES.bridgeLength, pawns: [0], crowd: [{ reserve: RULES.runners - 1, finished: 0 }], active: 0 };
+
+/** 화면에 안내하는 예상 대기 시간(초). 실제로 잰 값이 아니라 정해 둔 숫자다. */
+const EXPECTED_WAIT = 45;
 
 /** 빠른 매칭 대기 화면. 대기열에 연결해 두었다가 짝이 정해지면 방 코드를 받는다. */
 export function Matching({ onMatched, onCancel }: { onMatched: (code: string) => void; onCancel: () => void }) {
@@ -64,12 +68,13 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
   }, []);
 
   return (
-    <main className="home">
+    <main className="home matching">
+      <SettingsButton floating />
       <StageView state={WAITING} />
       <section className="panel">
         <h2>상대를 찾는 중…</h2>
-        <p>{seconds}초 지남</p>
-        <small>다른 사람이 빠른 매칭을 누르면 바로 시작해요. 기다리기 지루하면 친구에게 초대 링크를 보내 보세요.</small>
+        <p className="elapsed">{seconds}초 지남</p>
+        <small>예상 대기 시간 약 {EXPECTED_WAIT}초</small>
         {error && (
           <p className="error" role="alert">
             {error}
