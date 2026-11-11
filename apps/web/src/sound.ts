@@ -174,7 +174,7 @@ class Sound {
     document.addEventListener('visibilitychange', () => {
       if (!this.ctx) return;
       if (document.hidden) void this.ctx.suspend();
-      else if (this.enabled) void this.ctx.resume();
+      else if (this.enabled && !this.workMute) void this.ctx.resume();
     });
   }
 
@@ -195,6 +195,8 @@ class Sound {
     for (const fn of this.listeners) fn();
   }
 
+  /* 업무 모드가 켜져 있으면 unlock이 아무것도 하지 않으므로, 위에서 켜도 소리는 나지 않는다. */
+
   setVolume(v: number): void {
     this.volume = Math.min(1, Math.max(0, v));
     try {
@@ -205,6 +207,14 @@ class Sound {
     if (this.ctx && this.master) this.master.gain.setTargetAtTime(this.volume ** 2, this.ctx.currentTime, 0.03);
     if (this.volume > 0 && !this.enabled) return this.setEnabled(true); // 끈 상태에서 올리면 켠다
     for (const fn of this.listeners) fn();
+  }
+
+  /** 업무 모드에서는 설정과 상관없이 아무 소리도 내지 않는다. */
+  private workMute = false;
+  setWorkMute(on: boolean): void {
+    this.workMute = on;
+    if (on) void this.ctx?.suspend();
+    else if (this.enabled && this.ctx && !document.hidden) void this.ctx.resume();
   }
 
   setMusicEnabled(on: boolean): void {
@@ -226,7 +236,7 @@ class Sound {
 
   /** 사용자의 첫 입력 때 호출된다. 오디오를 만들고 음악을 시작한다. */
   private unlock(): void {
-    if (!this.enabled) return;
+    if (!this.enabled || this.workMute) return;
     if (!this.ctx) {
       const Ctx = window.AudioContext ?? (window as unknown as { webkitAudioContext?: typeof AudioContext }).webkitAudioContext;
       if (!Ctx) return;

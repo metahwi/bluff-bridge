@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react';
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
 import { BLANK, RULES } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
@@ -13,6 +13,9 @@ import type { ChompCue, StageControls } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 import type { DiceState } from './stage/dice.ts';
 import { useRoom } from './useRoom.ts';
+import { settings, useWork } from './settings.ts';
+import { WorkRoom, describeWork } from './work/WorkRoom.tsx';
+import { WorkChrome } from './work/WorkChrome.tsx';
 
 type Challenged = Extract<GameEvent, { type: 'challenged' }>;
 
@@ -185,7 +188,10 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const { room, deadline, conn, error, fatal, send } = useRoom(code, userId);
   /** 무대에서 재생 중인 추락 연출. 끝날 때까지 조작을 막는다. */
   const [cue, setCue] = useState<ChompCue | null>(null);
-  const [log, setLog] = useState<string[]>([]);
+  /** 기록은 게임 말투와 업무 말투 두 가지로 함께 쌓아 둔다(도중에 모드를 바꿔도 이어지게). */
+  const [log, setLog] = useState<{ game: string; work: string }[]>([]);
+  const work = useWork();
+  const endCue = useCallback(() => setCue(null), []);
   const [copied, setCopied] = useState(false);
   const [confirmLeave, setConfirmLeave] = useState(false);
   const [settled, setSettled] = useState(true);
@@ -228,10 +234,13 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     seenSeq.current = room.seq;
     const game = room.game;
     if (!game || first) return;
-    const lines = room.events.flatMap((e) => describe(e, game) ?? []);
+    const lines = room.events.flatMap((e) => {
+      const text = describe(e, game);
+      return text ? [{ game: text, work: describeWork(e, game) ?? text }] : [];
+    });
     if (lines.length) setLog((l) => [...lines.reverse(), ...l].slice(0, 40));
-    // 방금 주사위가 던져졌으면 멈출 때까지 잠깐 기다린다.
-    if (room.events.some((e) => e.type === 'rolled')) {
+    // 방금 주사위가 던져졌으면 멈출 때까지 잠깐 기다린다(업무 모드에는 구르는 주사위가 없다).
+    if (!settings.work && room.events.some((e) => e.type === 'rolled')) {
       setSettled(false);
       clearTimeout(settleTimer.current);
       settleTimer.current = setTimeout(() => setSettled(true), DICE_SETTLE_MS);
@@ -305,24 +314,67 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     onExit();
   }
 
-  if (fatal) {
-    return (
-      <main className="home">
-        <div className="panel">
-          <h2>입장할 수 없어요</h2>
-          <p className="error" role="alert">
-            {fatal}
-          </p>
-          <button onClick={onExit}>처음으로</button>
-        </div>
-      </main>
+  if (fatal || !room) {
+    const body = fatal ? (
+      <div className="panel">
+        <h2>{work ? '시트를 열 수 없습니다' : '입장할 수 없어요'}</h2>
+        <p className="error" role="alert">
+          {fatal}
+        </p>
+        <button onClick={onExit}>처음으로</button>
+      </div>
+    ) : (
+      <div className="panel">{work ? '여는 중…' : '연결 중…'}</div>
+    );
+    return work ? (
+      <WorkChrome cell={code} formula="">
+        {body}
+      </WorkChrome>
+    ) : (
+      <main className="home">{body}</main>
     );
   }
-  if (!room) {
+
+  const leaveDialog = confirmLeave && (
+    <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="leave-title">
+      <div className="panel">
+        <h2 id="leave-title">{work ? '시트를 닫을까요?' : '나갈까요?'}</h2>
+        <p>{work ? '지금 닫으면 이번 분기는 상대의 실적으로 처리됩니다.' : '지금 나가면 이 판은 패배로 처리돼요.'}</p>
+        <div className="row">
+          <button className="ghost" autoFocus onClick={() => setConfirmLeave(false)}>
+            {work ? '취소' : '계속 하기'}
+          </button>
+          <button className="danger" onClick={leave}>
+            {work ? '닫기' : '나가기'}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  // 업무 모드: 같은 방, 같은 상태를 표 계산 화면으로 보여 준다.
+  if (work) {
     return (
-      <main className="home">
-        <div className="panel">연결 중…</div>
-      </main>
+      <>
+        <div inert={confirmLeave ? true : undefined}>
+          <WorkRoom
+            code={code}
+            room={room}
+            deadline={deadline}
+            conn={conn}
+            error={error}
+            log={log.map((l) => l.work)}
+            cue={cue}
+            before={platesBefore.current}
+            copied={copied}
+            send={send}
+            onCueDone={endCue}
+            onCopy={copyLink}
+            onLeave={() => (room.status === 'playing' ? setConfirmLeave(true) : leave())}
+          />
+        </div>
+        {leaveDialog}
+      </>
     );
   }
 
@@ -361,7 +413,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
 
         {/* 판이 시작될 때마다 클래스 이름이 바뀌어 열리는 애니메이션이 다시 재생된다 */}
         <div className={'board' + (opening > 0 && inGame ? ` opening opening${opening % 2}` : '')}>
-          <StageView state={stageState} cue={cue} onCueDone={() => setCue(null)} controls={controls} intro={opening} />
+          <StageView state={stageState} cue={cue} onCueDone={endCue} controls={controls} intro={opening} />
           {game && room.status === 'over' && !cue && (
             <Result
               game={game}
@@ -448,7 +500,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                 <h3>기록</h3>
                 {/* 연출 중에는 방금 일어난 일(첫 줄)을 가려 결말이 먼저 보이지 않게 한다. */}
                 {(cue ? log.slice(1) : log).map((line, i, shown) => (
-                  <p key={shown.length - i}>{line}</p>
+                  <p key={shown.length - i}>{line.game}</p>
                 ))}
                 {log.length === 0 && <p className="empty">아직 아무 일도 없어요.</p>}
               </section>
@@ -457,22 +509,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         </aside>
       </main>
 
-      {confirmLeave && (
-        <div className="overlay" role="dialog" aria-modal="true" aria-labelledby="leave-title">
-          <div className="panel">
-            <h2 id="leave-title">나갈까요?</h2>
-            <p>지금 나가면 이 판은 패배로 처리돼요.</p>
-            <div className="row">
-              <button className="ghost" autoFocus onClick={() => setConfirmLeave(false)}>
-                계속 하기
-              </button>
-              <button className="danger" onClick={leave}>
-                나가기
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
+      {leaveDialog}
     </>
   );
 }

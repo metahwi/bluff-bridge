@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Sprite } from './pixel.tsx';
-import { settings, useGore } from './settings.ts';
+import { settings, useGore, useWork } from './settings.ts';
 import { sound } from './sound.ts';
 
 const GEAR = ['...ooo...', '.o.ooo.o.', '.ooooooo.', 'ooo...ooo', 'ooo...ooo', 'ooo...ooo', '.ooooooo.', '.o.ooo.o.', '...ooo...'] as const;
@@ -34,6 +34,7 @@ export function SettingsButton({ floating = false }: { floating?: boolean }) {
   );
   const [enabled, volume, musicOn] = snapshot.split('|');
   const gore = useGore();
+  const work = useWork();
 
   // 바깥을 누르거나 Esc를 누르면 닫는다.
   useEffect(() => {
@@ -51,26 +52,36 @@ export function SettingsButton({ floating = false }: { floating?: boolean }) {
   return (
     <div className={'settings' + (floating ? ' floating' : '')} ref={box}>
       <button className="ghost small gear" aria-label="설정" aria-expanded={open} onClick={() => setOpen(!open)}>
-        <Sprite rows={GEAR} palette={{ o: '#3a2414' }} scale={2} />
+        <Sprite rows={GEAR} palette={{ o: work ? '#ffffff' : '#3a2414' }} scale={2} />
       </button>
       {open && (
         <div className="settingsPanel" role="dialog" aria-label="설정">
-          <h3>설정</h3>
-          <Toggle label="소리" on={enabled === 'true'} onChange={(on) => sound.setEnabled(on)} />
-          <div className="settingRow">
-            <label htmlFor="volume">음량</label>
-            <input
-              id="volume"
-              type="range"
-              min={0}
-              max={100}
-              step={5}
-              value={enabled === 'true' ? Number(volume) : 0}
-              onChange={(e) => sound.setVolume(Number(e.target.value) / 100)}
-            />
-          </div>
-          <Toggle label="배경 음악" hint="끄면 효과음만 나와요." on={musicOn === 'true'} onChange={(on) => sound.setMusicEnabled(on)} />
-          <Toggle label="피 연출" hint="끄면 덜 잔인하게 보여요(어린이용)." on={gore} onChange={(on) => settings.setGore(on)} />
+          <h3>{work ? '옵션' : '설정'}</h3>
+          <Toggle
+            label="업무 모드"
+            hint={work ? '끄면 원래 게임 화면으로 돌아갑니다.' : '표 계산 화면처럼 보여요. 소리도 꺼져요.'}
+            on={work}
+            onChange={(on) => settings.setWork(on)}
+          />
+          {!work && (
+            <>
+              <Toggle label="소리" on={enabled === 'true'} onChange={(on) => sound.setEnabled(on)} />
+              <div className="settingRow">
+                <label htmlFor="volume">음량</label>
+                <input
+                  id="volume"
+                  type="range"
+                  min={0}
+                  max={100}
+                  step={5}
+                  value={enabled === 'true' ? Number(volume) : 0}
+                  onChange={(e) => sound.setVolume(Number(e.target.value) / 100)}
+                />
+              </div>
+              <Toggle label="배경 음악" hint="끄면 효과음만 나와요." on={musicOn === 'true'} onChange={(on) => sound.setMusicEnabled(on)} />
+              <Toggle label="피 연출" hint="끄면 덜 잔인하게 보여요(어린이용)." on={gore} onChange={(on) => settings.setGore(on)} />
+            </>
+          )}
         </div>
       )}
     </div>

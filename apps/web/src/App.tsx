@@ -7,6 +7,8 @@ import { Room } from './Room.tsx';
 import { RULES } from '@bluff-bridge/engine';
 import { sound } from './sound.ts';
 import { SettingsButton } from './Settings.tsx';
+import { useWork } from './settings.ts';
+import { WorkHome } from './work/WorkHome.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 
@@ -64,6 +66,7 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [cookieBlocked, setCookieBlocked] = useState(false);
+  const work = useWork();
 
   // 방 밖(첫 화면, 매칭 대기)에서는 마을 곡을 튼다.
   useEffect(() => {
@@ -161,6 +164,26 @@ export function App() {
   }
 
   const member = user && !user.isAnonymous;
+  if (work) {
+    return (
+      <WorkHome
+        me={me}
+        code={code}
+        draft={draft}
+        invite={invite}
+        busy={busy}
+        error={error}
+        onOpenInBrowser={cookieBlocked && inKakaoTalk ? openInBrowser : null}
+        setDraft={setDraft}
+        setInvite={setInvite}
+        onQuick={() => withName(() => setMatching(true))}
+        onCreate={createRoom}
+        onJoin={joinRoom}
+        onEnter={() => withName(() => setEntered(true))}
+        onHome={() => go('')}
+      />
+    );
+  }
   return (
     <main className="home">
       <SettingsButton floating />

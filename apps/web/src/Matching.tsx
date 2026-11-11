@@ -2,6 +2,8 @@ import { useEffect, useState } from 'react';
 import { RULES } from '@bluff-bridge/engine';
 import type { MatchMessage } from '@bluff-bridge/protocol/types';
 import { SettingsButton } from './Settings.tsx';
+import { useWork } from './settings.ts';
+import { WorkMatching } from './work/WorkHome.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 
@@ -15,6 +17,7 @@ const EXPECTED_WAIT = 45;
 export function Matching({ onMatched, onCancel }: { onMatched: (code: string) => void; onCancel: () => void }) {
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState('');
+  const work = useWork();
 
   useEffect(() => {
     let stopped = false;
@@ -66,6 +69,8 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
     // 화면이 떠 있는 동안 한 번만 연결한다.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  if (work) return <WorkMatching seconds={seconds} expected={EXPECTED_WAIT} error={error} onCancel={onCancel} />;
 
   return (
     <main className="home matching">

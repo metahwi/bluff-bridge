@@ -5,6 +5,7 @@ import { StageDemo } from './stage/StageDemo.tsx';
 import 'galmuri/dist/galmuri.css';
 import './styles.css';
 import './stage/stage.css';
+import './work/work.css';
 
 // 디자인 작업용: ?stage=idle | ?stage=chomp
 // 대표 주소로 모으기: www나 예전 주소(…workers.dev)로 들어오면 같은 경로의 hamahama.net으로 보낸다.

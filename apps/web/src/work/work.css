@@ -1,0 +1,166 @@
+/* 업무 모드: 표 계산 프로그램처럼 보이는 화면. <html data-mode="work">일 때만 적용된다. */
+:root[data-mode='work'] {
+  --wb-green: #1d6b45;
+  --wb-green-dark: #14502f;
+  --wb-line: #d4d4d4;
+  --wb-head: #f1f1f1;
+  --wb-text: #222;
+  --wb-muted: #6b6b6b;
+  --wb-lane: #f4f8f5;
+  font-family: 'Malgun Gothic', 'Apple SD Gothic Neo', 'Segoe UI', system-ui, sans-serif;
+  font-size: 13px;
+  line-height: 1.4;
+  color: var(--wb-text);
+  -webkit-font-smoothing: auto;
+}
+[data-mode='work'] body { background: #fff; background-image: none; }
+
+/* 게임 화면에서 물려받는 픽셀풍 모양을 지운다 */
+[data-mode='work'] :is(h1, h2, h3, small, label, button, input) { font-family: inherit; }
+[data-mode='work'] h2 { font-size: 15px; }
+[data-mode='work'] small { color: var(--wb-muted); font-size: 12px; }
+[data-mode='work'] button {
+  min-height: 28px;
+  padding: 3px 12px;
+  background: #fff;
+  color: var(--wb-text);
+  border: 1px solid #b5b5b5;
+  border-radius: 3px;
+  box-shadow: none;
+  font-size: 13px;
+  font-weight: 400;
+}
+[data-mode='work'] button:hover:not(:disabled) { background: #eef3ef; }
+[data-mode='work'] button:active:not(:disabled) { transform: none; box-shadow: none; background: #dfe9e2; }
+[data-mode='work'] button:disabled { filter: none; opacity: 0.5; }
+[data-mode='work'] button.primary { background: var(--wb-green); border-color: var(--wb-green-dark); color: #fff; }
+[data-mode='work'] button.primary:hover:not(:disabled) { background: var(--wb-green-dark); }
+[data-mode='work'] button.danger { background: #fff; border-color: #b3261e; color: #b3261e; box-shadow: none; }
+[data-mode='work'] input { min-height: 26px; padding: 2px 6px; background: #fff; color: var(--wb-text); border: 1px solid #b5b5b5; box-shadow: none; }
+[data-mode='work'] :is(button, input):focus-visible { outline: 2px solid var(--wb-green); outline-offset: 1px; box-shadow: none; }
+[data-mode='work'] .panel { align-items: flex-start; text-align: left; margin: 16px; padding: 14px 16px; gap: 8px; background: #fff; border: 1px solid #b5b5b5; box-shadow: 0 2px 8px rgb(0 0 0 / 0.15); }
+[data-mode='work'] .error { color: #b3261e; font-weight: 400; }
+[data-mode='work'] .overlay { background: rgb(0 0 0 / 0.25); }
+[data-mode='work'] .overlay .panel { margin: 0; }
+
+/* 설정 창 */
+[data-mode='work'] .gear { width: 30px; min-height: 26px; background: transparent; border-color: transparent; }
+[data-mode='work'] .gear:hover:not(:disabled), [data-mode='work'] .gear[aria-expanded='true'] { background: var(--wb-green-dark); }
+[data-mode='work'] .settingsPanel { padding: 10px 12px; background: #fff; color: var(--wb-text); border: 1px solid #b5b5b5; box-shadow: 0 2px 8px rgb(0 0 0 / 0.2); }
+[data-mode='work'] .settingsPanel h3 { font-family: inherit; font-size: 13px; }
+[data-mode='work'] .settingRow { border-top: 1px solid #e6e6e6; padding: 8px 0; }
+[data-mode='work'] .settingRow > span { font-size: 13px; color: var(--wb-text); }
+
+/* 문서 틀 */
+.wb { display: flex; flex-direction: column; min-height: 100vh; min-height: 100dvh; background: #fff; }
+.wbTitle { display: flex; align-items: center; gap: 10px; min-height: 34px; padding: 2px 8px 2px 12px; padding-top: max(2px, env(safe-area-inset-top)); background: var(--wb-green); color: #fff; }
+.wbDoc { font-weight: 700; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.wbSaved { margin-right: auto; font-size: 12px; opacity: 0.75; white-space: nowrap; }
+.wbMenu { display: flex; gap: 2px; padding: 0 6px; background: var(--wb-green); color: #fff; overflow: hidden; white-space: nowrap; }
+.wbMenu span { padding: 5px 10px; }
+.wbMenu .on { background: #f6f6f6; color: var(--wb-green-dark); font-weight: 700; border-radius: 3px 3px 0 0; }
+.wbTools { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; min-height: 40px; padding: 5px 8px; background: #f6f6f6; border-bottom: 1px solid var(--wb-line); }
+.wbSep { width: 1px; align-self: stretch; background: var(--wb-line); }
+.wbDue { color: var(--wb-muted); font-variant-numeric: tabular-nums; }
+.wbDue.soon { color: #b3261e; font-weight: 700; }
+.wbFormula { display: flex; align-items: stretch; min-height: 26px; border-bottom: 1px solid var(--wb-line); }
+.wbName { flex: none; width: 84px; padding: 3px 8px; border-right: 1px solid var(--wb-line); font-variant-numeric: tabular-nums; }
+.wbFx { flex: none; padding: 3px 10px; border-right: 1px solid var(--wb-line); color: var(--wb-muted); font-style: italic; }
+.wbExpr { flex: 1; min-width: 0; padding: 3px 8px; font-family: Consolas, 'Malgun Gothic', monospace; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+/* 내용: 빈 곳에도 칸 선이 보이게 한다 */
+.wbBody {
+  flex: 1;
+  min-height: 0;
+  overflow: auto;
+  background-color: #fff;
+  background-image: linear-gradient(to right, #e9e9e9 1px, transparent 1px), linear-gradient(to bottom, #e9e9e9 1px, transparent 1px);
+  background-size: 92px 24px;
+  background-position: 35px -1px;
+}
+.wbTabs { display: flex; align-items: flex-end; gap: 2px; padding: 0 8px; background: #f1f1f1; border-top: 1px solid var(--wb-line); white-space: nowrap; overflow: hidden; }
+.wbTabs span { padding: 4px 14px; color: var(--wb-muted); }
+.wbTabs .on { background: #fff; color: var(--wb-green-dark); font-weight: 700; border-bottom: 2px solid var(--wb-green); }
+.wbStatus { display: flex; justify-content: space-between; gap: 12px; padding: 2px 10px calc(2px + env(safe-area-inset-bottom)); background: #f1f1f1; border-top: 1px solid var(--wb-line); color: var(--wb-muted); font-size: 12px; white-space: pre; overflow: hidden; }
+
+/* 표 */
+.sheet { border-collapse: collapse; background: #fff; }
+.sheet th, .sheet td { height: 24px; padding: 2px 6px; border: 1px solid var(--wb-line); text-align: left; vertical-align: middle; font-weight: 400; }
+.sheet th { min-width: 36px; width: 36px; background: var(--wb-head); color: var(--wb-muted); text-align: center; font-size: 12px; }
+.sheet thead th { width: auto; }
+.sheet .head { background: #e7efe9; font-weight: 700; white-space: nowrap; }
+.sheet .num { text-align: right; font-variant-numeric: tabular-nums; }
+.sheet .note { color: var(--wb-muted); }
+.sheet .ok { color: #1b6e2b; }
+.sheet .bad { color: #b3261e; }
+.sheet .na, .wbTask .na { color: #b3261e; }
+.sheet .sum { font-weight: 700; }
+/* 도구 모음의 꾸밈(글꼴 상자 등). 눌리지 않는다. */
+.wbDecor { display: flex; align-items: center; gap: 6px; margin-left: auto; color: var(--wb-muted); white-space: nowrap; }
+.wbDecor span { padding: 2px 8px; border: 1px solid var(--wb-line); background: #fff; border-radius: 3px; }
+@media (max-width: 720px) { .wbDecor { display: none; } }
+.sheet .who { min-width: 110px; font-weight: 700; white-space: nowrap; }
+.sheet .who.p0 { color: #a04a00; }
+.sheet .who.p1 { color: #1f4e79; }
+.sheet.home { min-width: min(720px, 100%); }
+.sheet.home td:first-of-type { width: 120px; }
+.sheet.home input { width: 100%; max-width: 260px; }
+.sheet.home td > button + button { margin-left: 6px; }
+.sheet button { min-height: 22px; padding: 1px 10px; }
+
+/* 결재 라인 = 다리. 1단계부터 마지막 단계까지를 굵은 테두리 하나로 묶는다. */
+.sheetScroll { overflow-x: auto; }
+.sheet.line td { text-align: center; min-width: 56px; }
+.sheet.line td.who, .sheet.line td.note { text-align: left; }
+.sheet.line .lane { background: var(--wb-lane); border-left-style: dashed; border-right-style: dashed; }
+.sheet.line .lane.top { border-top: 2px solid #333; background: #dfeae2; }
+.sheet.line .lane.bottom { border-bottom: 2px solid #333; }
+.sheet.line .lane.first { border-left: 2px solid #333; }
+.sheet.line .lane.last { border-right: 2px solid #333; }
+/* 안건(말): 조건부 서식처럼 칸을 칠한다 */
+.sheet.line .item { font-weight: 700; }
+.sheet.line .item.p0 { background: #fce4d6; color: #a04a00; }
+.sheet.line .item.p1 { background: #ddebf7; color: #1f4e79; }
+/* 지금 차례인 담당자: 선택된 칸처럼 초록 테두리 */
+.sheet.line tr.turn .who { outline: 2px solid var(--wb-green); outline-offset: -2px; }
+/* 감사에서 반려된 줄 */
+.sheet.line tr.flagged td { background: #ffc7ce; color: #9c0006; }
+
+/* 지금 할 일 */
+.wbTask { display: flex; flex-direction: column; gap: 6px; max-width: 900px; margin: 12px 0 12px 36px; padding: 10px 12px; background: #fffbe6; border: 1px solid #e6d27a; }
+.wbTask p { margin: 0; }
+.wbTask .choices { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; }
+.wbTask .audit { font-weight: 700; }
+.wbTask .audit.fraud { color: #9c0006; }
+.wbTask .audit.clean { color: #1b6e2b; }
+.wbTask button { min-height: 30px; min-width: 44px; }
+.sheet.summary { margin: 4px 0; }
+.sheet.history td { min-width: min(560px, calc(100vw - 60px)); }
+.sheet.history { margin-bottom: 24px; }
+
+.sheet .short { display: none; }
+[data-mode='work'] button { white-space: nowrap; }
+
+/* 휴대폰: 결재 라인 전체가 한 화면에 들어오게 머리글을 줄인다 */
+@media (max-width: 720px) {
+  .wbMenu span { padding: 5px 7px; }
+  .wbName { width: 64px; }
+  .wbBody { background-position: 23px -1px; }
+  .wbTask { margin-left: 6px; margin-right: 6px; }
+  .sheet th { min-width: 24px; width: 24px; }
+  .sheet.line { width: 100%; table-layout: fixed; font-size: 11px; }
+  .sheet.line thead th:nth-child(2) { width: 22%; }
+  .sheet.line td { min-width: 0; padding: 2px 0; overflow: hidden; }
+  .sheet.line td.who { min-width: 0; padding-left: 3px; text-overflow: ellipsis; }
+  .sheet.line td.note { padding-left: 3px; white-space: normal; }
+  .sheet .long { display: none; }
+  .sheet .short { display: inline; }
+  .sheet.home { width: 100%; }
+  .sheet.home .hint { display: none; }
+  .sheet.home td:first-of-type { width: auto; }
+  .sheet.home td > button + button { margin: 4px 0 0; }
+  .sheet.home td > button { display: block; }
+  .wbTask button { min-height: 40px; }
+  .sheet.history { width: 100%; }
+  .sheet.history td { min-width: 0; }
+}
