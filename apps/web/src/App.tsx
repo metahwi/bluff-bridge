@@ -6,7 +6,7 @@ import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
 import { RULES } from '@bluff-bridge/engine';
 import { sound } from './sound.ts';
-import { SoundControl } from './SoundToggle.tsx';
+import { SettingsButton } from './Settings.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 
@@ -163,7 +163,7 @@ export function App() {
   const member = user && !user.isAnonymous;
   return (
     <main className="home">
-      <SoundControl floating />
+      <SettingsButton floating />
       <h1 className="logo">하마하마</h1>
       <StageView state={HERO} />
 

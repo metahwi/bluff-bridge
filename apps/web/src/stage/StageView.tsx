@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react';
 import type { ReactNode, RefObject } from 'react';
 import { Die } from '../pixel.tsx';
+import { settings, useGore } from '../settings.ts';
 import { sound } from '../sound.ts';
 import { Stage } from './Stage.ts';
 import type { ChompPhase, StageLabel, StageState } from './Stage.ts';
@@ -75,7 +76,7 @@ export function StageView({
         sound.play('suspense');
       } else if (p === 'reveal') sound.play(truth.current ? 'truth' : 'lie');
       else if (p === 'fall' || p === 'kick' || p === 'rope') sound.play('whoosh');
-      else if (p === 'chomp') sound.play('crunch');
+      else if (p === 'chomp') sound.play(settings.gore ? 'crunch' : 'gulp');
       else if (p === 'burp') setTimeout(() => sound.play('burp'), 300);
       else if (p === 'done') sound.duck(false);
     };
@@ -102,6 +103,12 @@ export function StageView({
     stage.current?.setState(state);
   }, [state]);
 
+  // 피 연출 설정을 무대에 전한다. 끄면 피와 뼈다귀 없이 반짝이로 대신한다.
+  const gore = useGore();
+  useEffect(() => {
+    stage.current?.setGore(gore);
+  }, [gore]);
+
   // 게임 시작 장면: 카메라가 물러나는 동안에는 번호와 표지판 글자를 잠깐 숨긴다(위치가 어긋나므로).
   const [introducing, setIntroducing] = useState(false);
   useEffect(() => {
@@ -117,7 +124,7 @@ export function StageView({
   const eaten = phase === 'chomp' || phase === 'chew' || phase === 'burp';
 
   return (
-    <div className={`stage ${playing ? 'cinema is-' + phase : ''}`}>
+    <div className={`stage ${playing ? 'cinema is-' + phase : ''} ${gore ? 'gore' : ''}`}>
       <canvas ref={canvas} aria-label="다리와 강. 물 위로 하마들이 머리를 내밀고 있다." role="img" />
       {failed && <p className="stageFallback">이 기기에서는 게임판을 그릴 수 없어요. 아래 기록으로 진행 상황을 확인해 주세요.</p>}
 
@@ -146,10 +153,14 @@ export function StageView({
           </div>
           {phase === 'kick' && <span className="sfx sfxKick">뻥!</span>}
           {phase === 'rope' && <span className="sfx sfxKick">휙!</span>}
-          {phase === 'chomp' && <span className="sfx sfxCrunch">콰직!</span>}
-          {phase === 'chew' && <span className="sfx sfxMunch">우적우적</span>}
+          {phase === 'chomp' && <span className={'sfx sfxCrunch' + (gore ? '' : ' mild')}>{gore ? '콰직!' : '꿀꺽!'}</span>}
+          {phase === 'chew' && <span className="sfx sfxMunch">{gore ? '우적우적' : '냠냠'}</span>}
           {phase === 'burp' && <span className="sfxBurp">꺼억</span>}
-          {eaten && <p className="epitaph">{cue.victimName}의 말이 하마에게 먹혔어요.</p>}
+          {eaten && (
+            <p className="epitaph">
+              {cue.victimName}의 말{gore ? '이 하마에게 먹혔어요.' : '을 하마가 꿀꺽 삼켰어요.'}
+            </p>
+          )}
         </>
       )}
     </div>

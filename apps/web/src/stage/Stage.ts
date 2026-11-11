@@ -169,6 +169,8 @@ export class Stage {
   private cssW = 1;
   private cssH = 1;
   private reduced = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  /** 피 연출을 보여 줄지. 끄면 피와 뼈다귀 없이 반짝이로 대신한다(어린이용). */
+  private gore = true;
   private dummy = new THREE.Object3D();
 
   constructor(private canvas: HTMLCanvasElement) {
@@ -310,6 +312,15 @@ export class Stage {
     this.renderer.render(this.scene, this.camera);
     if (!this.busy) this.dice.render(this.renderer); // 추락 연출 중에는 주사위를 치운다
   };
+
+  /** 피 연출을 켜거나 끈다. 끄면 물에 남아 있던 피와 뼈다귀도 바로 지운다. */
+  setGore(on: boolean): void {
+    this.gore = on;
+    if (!on) {
+      this.water.uniforms.uBlood.value.w = 0;
+      this.bone.visible = false;
+    }
+  }
 
   /** 게임이 시작될 때의 첫 장면: 다리를 가까이 잡았다가 천천히 물러나며 마을 전체를 보여 준다. */
   intro(): void {
@@ -640,6 +651,7 @@ export class Stage {
     }
 
     this.busy = true;
+    const gore = this.gore; // 연출 도중에 설정을 바꿔도 이번 장면은 처음 정한 대로 간다
     this.dice.set({ mode: 'hidden', face: null });
     this.onPhase('suspense');
     this.bone.visible = false;
@@ -856,8 +868,13 @@ export class Stage {
       victim.group.visible = false;
       this.freeze = 0.13;
       this.shake = 0.9;
-      this.burst(mouth, 70, ['#c1121f', '#e01e37', '#8a0b16', '#c1121f'], 4.4, 6.4, 0.16);
-      this.water.uniforms.uBlood.value.set(HX, LUNGE_Z + 0.75, 0, 0.96);
+      if (gore) {
+        this.burst(mouth, 70, ['#c1121f', '#e01e37', '#8a0b16', '#c1121f'], 4.4, 6.4, 0.16);
+        this.water.uniforms.uBlood.value.set(HX, LUNGE_Z + 0.75, 0, 0.96);
+      } else {
+        // 순한 연출: 피 대신 별 같은 반짝이가 튄다
+        this.burst(mouth, 44, ['#ffffff', '#ffe066', '#ffd84d', '#d2f4fb'], 4.0, 6.0, 0.15);
+      }
     });
     this.tween(C, 1.8, (k) => (this.water.uniforms.uBlood.value.z = 1.55 * k), easeOut);
     // 물속으로 도로 떨어지며 두 번째 물보라
@@ -867,7 +884,7 @@ export class Stage {
     }, easeIn);
     this.at(C + 0.52, () => {
       this.onSfx('splash');
-      this.burst(new THREE.Vector3(HX, 0.1, LUNGE_Z + 0.6), 28, ['#ffffff', '#d2f4fb', '#e8a0a8'], 3.6, 5, 0.15);
+      this.burst(new THREE.Vector3(HX, 0.1, LUNGE_Z + 0.6), 28, ['#ffffff', '#d2f4fb', gore ? '#e8a0a8' : '#8fd6e6'], 3.6, 5, 0.15);
       this.shake = 0.35;
     });
     this.moveCamera(C + 0.3, 0.5, { x: HX * 0.9, y: 0.3, z: 1.9, zoom: 1.8 });
@@ -880,7 +897,7 @@ export class Stage {
       this.tween(W + n * 0.34 + 0.17, 0.09, (k) => (hippo.open = 0.32 * (1 - k)), easeIn);
       this.at(W + n * 0.34 + 0.26, () => {
         this.onSfx('munch');
-        this.burst(new THREE.Vector3(HX, 0.3, LUNGE_Z + 0.95), 10, ['#c1121f', '#e01e37'], 1.7, 3.2, 0.12);
+        if (gore) this.burst(new THREE.Vector3(HX, 0.3, LUNGE_Z + 0.95), 10, ['#c1121f', '#e01e37'], 1.7, 3.2, 0.12);
         this.shake = 0.16;
       });
     }
@@ -889,8 +906,9 @@ export class Stage {
     const B = W + 1.15;
     this.at(B, () => {
       this.onPhase('burp');
-      this.onSfx('bone');
-      this.bone.visible = true;
+      // 순한 연출에서는 뼈다귀를 뱉지 않고 트림만 한다
+      if (gore) this.onSfx('bone');
+      this.bone.visible = gore;
     });
     this.tween(B, 0.14, (k) => (hippo.open = 0.6 * k), easeOut);
     this.tween(B + 0.5, 0.3, (k) => (hippo.open = 0.6 * (1 - k)), easeIn);
@@ -899,7 +917,7 @@ export class Stage {
       this.bone.position.set(lerp(HX, land.x, k), 0.5 + Math.sin(k * Math.PI) * 1.5 - k * 0.44, lerp(LUNGE_Z + 0.9, land.z, k));
       this.bone.rotation.set(k * 9, k * 4, 0.3);
     });
-    this.at(B + 0.7, () => this.burst(land, 8, ['#ffffff', '#d2f4fb'], 1.2, 2.4, 0.09));
+    if (gore) this.at(B + 0.7, () => this.burst(land, 8, ['#ffffff', '#d2f4fb'], 1.2, 2.4, 0.09));
 
     // 7. 제자리로
     const E = B + 1.1;

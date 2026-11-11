@@ -8,6 +8,7 @@
 import { useEffect, useRef, useState } from 'react';
 import { createGame, viewFor } from '@bluff-bridge/engine';
 import { Result } from '../Result.tsx';
+import { SettingsButton } from '../Settings.tsx';
 import { ThrowButton } from '../ThrowButton.tsx';
 import { StageView } from './StageView.tsx';
 import type { ChompCue, StageControls } from './StageView.tsx';
@@ -93,6 +94,7 @@ export function StageDemo({ mode }: { mode: string }) {
     <main className="room">
       <header>
         <span>무대 시험</span>
+        <SettingsButton />
       </header>
       <div className="board">
         <StageView state={state} cue={cue} onCueDone={() => setCue(null)} controls={controls} />

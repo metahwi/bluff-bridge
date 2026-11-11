@@ -17,6 +17,7 @@ export type Sfx =
   | 'whoosh'
   | 'splash'
   | 'crunch'
+  | 'gulp'
   | 'munch'
   | 'bone'
   | 'burp'
@@ -133,6 +134,7 @@ function chord(name: string): { root: number; tones: number[] } {
 
 const STORAGE_KEY = 'hama:sound';
 const VOLUME_KEY = 'hama:volume';
+const MUSIC_KEY = 'hama:music';
 /** 배경 음악의 크기. 효과음보다 살짝 작게 깔리되, 기본 음량에서 또렷이 들려야 한다. */
 const MUSIC_LEVEL = 1.0;
 
@@ -151,10 +153,13 @@ class Sound {
   enabled = true;
   /** 전체 음량 0~1. */
   volume = 0.7;
+  /** 배경 음악만 따로 끌 수 있다(효과음은 그대로). */
+  musicOn = true;
 
   constructor() {
     try {
       this.enabled = localStorage.getItem(STORAGE_KEY) !== 'off';
+      this.musicOn = localStorage.getItem(MUSIC_KEY) !== 'off';
       const saved = Number(localStorage.getItem(VOLUME_KEY) ?? NaN);
       if (saved >= 0 && saved <= 1) this.volume = saved;
     } catch {
@@ -202,6 +207,17 @@ class Sound {
     for (const fn of this.listeners) fn();
   }
 
+  setMusicEnabled(on: boolean): void {
+    this.musicOn = on;
+    try {
+      localStorage.setItem(MUSIC_KEY, on ? 'on' : 'off');
+    } catch {
+      // 무시
+    }
+    this.duck(false);
+    for (const fn of this.listeners) fn();
+  }
+
   /** 상황에 맞는 곡으로 바꾼다. 마디가 끝날 때 자연스럽게 넘어간다. */
   setMusic(track: Track): void {
     this.wanted = track;
@@ -240,7 +256,7 @@ class Sound {
     this.master.connect(limiter);
 
     this.music = ctx.createGain();
-    this.music.gain.value = MUSIC_LEVEL;
+    this.music.gain.value = this.musicOn ? MUSIC_LEVEL : 0;
     this.music.connect(this.master);
     // 메아리: 음악이 덜 메마르게 들리도록 살짝 되울린다.
     const delay = ctx.createDelay(1);
@@ -359,7 +375,8 @@ class Sound {
   duck(on: boolean): void {
     if (!this.ctx || !this.music) return;
     this.music.gain.cancelScheduledValues(this.ctx.currentTime);
-    this.music.gain.setTargetAtTime(on ? MUSIC_LEVEL * 0.15 : MUSIC_LEVEL, this.ctx.currentTime, 0.12);
+    const level = this.musicOn ? MUSIC_LEVEL : 0;
+    this.music.gain.setTargetAtTime(on ? level * 0.15 : level, this.ctx.currentTime, 0.12);
   }
 
   /** 주사위 힘을 모으는 동안 나는 소리. 힘이 셀수록 높은 음. */
@@ -444,6 +461,11 @@ class Sound {
         this.hiss(ctx, out, t + 0.07, 0.16, 0.8, 'bandpass', 700, 250);
         this.tone(ctx, out, 'square', 110, t, 0.3, 0.5, 36);
         this.tone(ctx, out, 'sine', 70, t, 0.4, 0.7, 30);
+        break;
+      case 'gulp':
+        // 꿀꺽: 순한 연출에서 '콰직' 대신 나는 소리
+        this.tone(ctx, out, 'sine', 420, t, 0.12, 0.6, 150);
+        this.tone(ctx, out, 'sine', 190, t + 0.13, 0.16, 0.6, 330);
         break;
       case 'munch':
         this.hiss(ctx, out, t, 0.07, 0.5, 'bandpass', 900, 400);

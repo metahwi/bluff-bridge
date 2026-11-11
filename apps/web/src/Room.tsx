@@ -6,7 +6,7 @@ import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
 import { sound } from './sound.ts';
 import { Result } from './Result.tsx';
-import { SoundControl } from './SoundToggle.tsx';
+import { SettingsButton } from './Settings.tsx';
 import { ThrowButton } from './ThrowButton.tsx';
 import { StageView } from './stage/StageView.tsx';
 import type { ChompCue, StageControls } from './stage/StageView.tsx';
@@ -344,7 +344,6 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
           </span>
           <span className="row">
-            <SoundControl />
             {!room.auto && (
               <button className="ghost small" onClick={copyLink}>
                 {copied ? '복사됨' : '초대 링크 복사'}
@@ -356,6 +355,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             >
               나가기
             </button>
+            <SettingsButton />
           </span>
         </header>
 

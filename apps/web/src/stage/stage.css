@@ -1,17 +1,24 @@
-/* 소리: 켜기/끄기 단추 + 음량 막대 */
-.soundControl { display: inline-flex; align-items: center; gap: 6px; }
-.soundControl.floating { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 5; padding: 4px 6px; background: var(--paper); border: 3px solid var(--ink); }
-.soundControl button[aria-pressed='false'] { background: var(--paper-dark); color: var(--dirt-dark); }
-.soundControl input[type='range'] { appearance: none; width: 84px; min-height: 0; height: 12px; padding: 0; background: #fffaf0; border: 3px solid var(--ink); box-shadow: none; cursor: pointer; }
-.soundControl input[type='range']::-webkit-slider-thumb { appearance: none; width: 12px; height: 20px; background: var(--gold); border: 3px solid var(--ink); }
-.soundControl input[type='range']::-moz-range-thumb { width: 8px; height: 14px; border-radius: 0; background: var(--gold); border: 3px solid var(--ink); }
+/* 설정: 오른쪽 위 톱니바퀴와, 누르면 그 아래로 열리는 창 */
+.settings { position: relative; display: inline-flex; }
+.settings.floating { position: absolute; top: max(8px, env(safe-area-inset-top)); right: max(8px, env(safe-area-inset-right)); z-index: 30; }
+.gear { display: grid; place-items: center; width: 40px; min-height: 40px; padding: 0; }
+.gear[aria-expanded='true'] { background: var(--gold); }
+.settingsPanel { position: absolute; top: calc(100% + 8px); right: 0; z-index: 30; width: min(300px, calc(100vw - 24px)); display: flex; flex-direction: column; padding: 14px; text-align: left; background: var(--paper); border: 3px solid var(--ink); box-shadow: inset 0 0 0 3px var(--paper-dark), 4px 4px 0 rgb(58 36 20 / 0.4); }
+.settingsPanel h3 { margin: 0 0 4px; font-family: Galmuri11, sans-serif; font-size: 18px; }
+.settingRow { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px 0; border-top: 3px dotted var(--paper-dark); }
+.settingRow > span, .settingRow > label { display: flex; flex-direction: column; margin: 0; font-family: inherit; font-size: 15px; color: var(--ink); }
+.settingRow small { margin-top: 2px; }
+.settingRow button { min-width: 64px; flex: none; }
+.settingRow input[type='range'] { appearance: none; flex: 1; max-width: 150px; min-height: 0; height: 14px; padding: 0; background: #fffaf0; border: 3px solid var(--ink); box-shadow: none; cursor: pointer; }
+.settingRow input[type='range']::-webkit-slider-thumb { appearance: none; width: 14px; height: 24px; background: var(--gold); border: 3px solid var(--ink); }
+.settingRow input[type='range']::-moz-range-thumb { width: 10px; height: 18px; border-radius: 0; background: var(--gold); border: 3px solid var(--ink); }
 
 /* 휴대폰: 머리말이 한두 줄에 들어오게 줄인다 */
 @media (max-width: 520px) {
   main.room > header { padding: 4px 6px; gap: 4px; }
   main.room > header .row { gap: 4px; justify-content: flex-end; }
   main.room > header button.small { padding: 2px 6px; min-height: 32px; }
-  .soundControl input[type='range'] { width: 52px; }
+  .gear { width: 34px; min-height: 32px; }
   .plate { padding: 6px 8px; }
   .plate dl { gap: 2px 8px; margin-top: 2px; }
 }
@@ -171,7 +178,9 @@ main.room.lobby .seats li { padding: 12px 0; font-size: 18px; }
 .epitaph { position: absolute; left: 0; right: 0; bottom: calc(9% + 8px); margin: 0; text-align: center; color: #fff8e7; font-weight: 700; text-shadow: 2px 2px 0 var(--ink), -2px 0 0 var(--ink), 0 -2px 0 var(--ink), 2px -2px 0 var(--ink), -2px 2px 0 var(--ink), 2px 0 0 var(--ink), 0 2px 0 var(--ink); }
 
 /* 물리는 순간 화면 가장자리가 붉게 번쩍인다 */
-.stage.cinema.is-chomp::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 9px rgb(193 18 31 / 0.85), inset 0 0 0 18px rgb(193 18 31 / 0.4); animation: flash 0.5s steps(5) forwards; }
+.sfxCrunch.mild { color: var(--gold); text-shadow: 3px 0 0 var(--ink), -3px 0 0 var(--ink), 0 3px 0 var(--ink), 0 -3px 0 var(--ink), 3px 3px 0 var(--ink), -3px -3px 0 var(--ink), 3px -3px 0 var(--ink), -3px 3px 0 var(--ink), 7px 7px 0 rgb(20 12 6 / 0.5); }
+/* 붉은 번쩍임은 피 연출이 켜져 있을 때만 */
+.stage.cinema.gore.is-chomp::after { content: ''; position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 9px rgb(193 18 31 / 0.85), inset 0 0 0 18px rgb(193 18 31 / 0.4); animation: flash 0.5s steps(5) forwards; }
 
 @keyframes bars { from { transform: scaleY(0); } }
 @keyframes slam { 0% { transform: scale(2.6) rotate(-14deg); } 60% { transform: scale(0.9) rotate(-4deg); } 100% { transform: scale(1) rotate(-7deg); } }
