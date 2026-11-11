@@ -4,7 +4,7 @@ import { CookieError, authClient, ensureGuest, inKakaoTalk, openInBrowser, socia
 import type { Me } from './auth.ts';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
-import { RULES } from '@bluff-bridge/engine';
+import { RULES, rulesFor } from '@bluff-bridge/engine';
 import { sound } from './sound.ts';
 import { SettingsButton } from './Settings.tsx';
 import { useWork } from './settings.ts';
@@ -22,6 +22,9 @@ const HERO: StageState = {
   ],
   active: 0,
 };
+
+/** 3~4명이 할 때의 규칙(말 수와 완주 수가 다르다). */
+const MULTI = rulesFor(4);
 
 const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 로그인', kakao: '카카오로 로그인' };
 const REASON_LABEL: Record<string, string> = { finish: '완주', elimination: '말 소진', forfeit: '기권' };
@@ -217,9 +220,7 @@ export function App() {
           <button className="ghost" disabled={busy || !draft.trim()} onClick={createRoom}>
             친구와 하기 (방 만들기)
           </button>
-          <button className="ghost soon" disabled>
-            4인 대결 <span className="badge">Coming Soon</span>
-          </button>
+          <small className="hint">방을 만들면 초대 링크로 4명까지 함께 할 수 있어요.</small>
           <label htmlFor="invite">초대받았나요?</label>
           <div className="row">
             <input
@@ -256,10 +257,10 @@ export function App() {
           <li>
             1~{RULES.maxClaim} 중 하나를 외쳐요. 뻥이어도 돼요. <b className="blankWord">꽝</b>이 나오면 무조건 뻥을 쳐야 해요.
           </li>
-          <li>상대가 믿으면 외친 만큼 다리를 건너요.</li>
-          <li>상대가 의심하면 주사위를 공개해요. 뻥이었으면 내 말이, 진실이었으면 상대 말이 하마 밥이 돼요.</li>
+          <li>다른 사람이 모두 믿으면 외친 만큼 다리를 건너요.</li>
+          <li>누군가 의심하면 주사위를 공개해요. 뻥이었으면 내 말이, 진실이었으면 의심한 사람의 말이 하마 밥이 돼요.</li>
           <li>
-            말 {RULES.runners}개 중 {RULES.finishesToWin}개를 먼저 건너보내면 이겨요.
+            말 {RULES.runners}개 중 {RULES.finishesToWin}개를 먼저 건너보내면 이겨요. 3~4명이 하면 말 {MULTI.runners}개 중 {MULTI.finishesToWin}개예요.
           </li>
         </ol>
       </section>

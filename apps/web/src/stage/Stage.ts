@@ -450,7 +450,7 @@ export class Stage {
 
   private spot(player: number, pos: number, length: number): THREE.Vector3 {
     // 같은 칸에 서도 겹치지 않게 앞뒤로 벌려 세운다(널빤지 깊이 1.7 안에서)
-    const lane = (player - (this.pawns.length - 1) / 2) * Math.min(0.9, 1.3 / Math.max(1, this.pawns.length - 1));
+    const lane = (player - (this.pawns.length - 1) / 2) * Math.min(0.9, 1.5 / Math.max(1, this.pawns.length - 1));
     if (pos <= 0) return new THREE.Vector3(-BRIDGE_HALF - 0.75, BANK_TOP, lane);
     if (pos > length) return new THREE.Vector3(BRIDGE_HALF + 0.75, BANK_TOP, lane);
     const x = plankX(pos, length);
@@ -512,6 +512,10 @@ export class Stage {
       this.pawns.push({ group, pos: null, moving: false, locked: false, base: new THREE.Vector3() });
     }
 
+    // 셋 이상이 한 널빤지에 설 수 있으므로 말을 조금 작게 그린다.
+    const size = PAWN_SIZE * (next.pawns.length > 2 ? 0.84 : 1);
+    for (const p of this.pawns) p.group.children[0]!.scale.setScalar(size);
+
     this.pawns.forEach((p, i) => {
       const pos = next.pawns[i] ?? null;
       const from = p.pos;
@@ -549,7 +553,9 @@ export class Stage {
   private campSpot(player: number, index: number, side: -1 | 1): THREE.Vector3 {
     const dir = player % 2 === 0 ? -1 : 1;
     const zBase = dir * (1.75 + Math.floor(player / 2) * 1.75);
-    return new THREE.Vector3(side * (BRIDGE_HALF + 0.7 + (index % 3) * 0.66), BANK_TOP, zBase + dir * Math.floor(index / 3) * 0.7);
+    // 셋 이상이면 다리 입구에 선 말들과 겹치지 않게 줄을 다리에서 조금 떼어 세운다.
+    const gap = (this.state?.crowd.length ?? 2) > 2 ? 1.5 : 0.7;
+    return new THREE.Vector3(side * (BRIDGE_HALF + gap + (index % 3) * 0.66), BANK_TOP, zBase + dir * Math.floor(index / 3) * 0.7);
   }
 
   /** 언덕 위에 줄지어 선 말들과 팀 깃발. 먹히거나 출발하면 그만큼 줄어든다. */

@@ -41,8 +41,8 @@ await b.getByRole('button', { name: /입장$/ }).click();
 await a.waitForTimeout(800);
 await shot(a, 'lobby');
 
-await button(a, '준비 완료').click();
 await button(b, '준비 완료').click();
+await button(a, '검토 시작').click();
 await a.getByText('1단계').waitFor();
 await shot(a, 'start');
 

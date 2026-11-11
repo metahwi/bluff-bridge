@@ -1,17 +1,16 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   GameError,
-  RULES,
-  awaiting,
   createGame,
   forfeit,
   reduce,
-  timeoutAction,
+  rulesFor,
+  timeout,
   viewEvent,
   viewFor,
 } from '@bluff-bridge/engine';
 import type { GameEvent, GameState } from '@bluff-bridge/engine';
-import { GRACE_MS, MAX_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
+import { GRACE_MS, MAX_SEATS, MIN_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
 import type { RoomView, ServerMessage } from '@bluff-bridge/protocol';
 import type { Env } from './index.ts';
 import { saveMatch } from './records.ts';
@@ -25,7 +24,22 @@ interface Seat {
   rematch: boolean;
   /** 접속이 끊긴 시각. 접속 중이면 null. */
   offlineSince: number | null;
+  /**
+   * 이번 판에서 기권했다(나갔거나 접속이 끊겼다). 판이 계속되는 동안에는 자리 번호가
+   * game.players의 번호와 같아야 해서 자리를 지우지 않고 이 표시만 해 둔다.
+   */
+  left?: boolean;
 }
+
+/** 기권하고 돌아오지 않은 자리. 다음 판에는 끼지 않는다. */
+const absent = (s: Seat) => !!s.left && s.offlineSince !== null;
+
+/**
+ * 기권한 자리를 아직 지우면 안 되는 때. 판이 진행 중이거나 결과 화면이 떠 있는 동안에는
+ * 자리 번호가 game.players의 번호와 같아야 하므로, 남아 있는 사람이 있는 한 그대로 둔다
+ * (다음 판을 시작할 때 start가 빼 준다).
+ */
+const held = (room: Room, s: Seat) => !!s.left && room.status !== 'lobby' && room.seats.some((x) => x.offlineSince === null);
 
 interface Room {
   code: string;
@@ -96,7 +110,9 @@ export class GameRoom extends DurableObject<Env> {
 
     const times: number[] = [];
     if (room.status === 'playing' && room.deadline !== null) times.push(room.deadline);
-    for (const s of room.seats) if (s.offlineSince !== null) times.push(s.offlineSince + GRACE_MS);
+    for (const s of room.seats) {
+      if (s.offlineSince !== null && !held(room, s)) times.push(s.offlineSince + GRACE_MS);
+    }
     if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
     else await this.ctx.storage.deleteAlarm();
 
@@ -139,6 +155,7 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private applyResult(room: Room, result: { state: GameState; events: GameEvent[] }): void {
+    const before = room.game;
     room.game = result.state;
     room.events = result.events;
     room.seq++;
@@ -163,15 +180,21 @@ export class GameRoom extends DurableObject<Env> {
       };
       room.status = 'over';
       room.deadline = null;
-      for (const s of room.seats) s.rematch = false;
+      for (const s of room.seats) {
+        s.rematch = false;
+      }
+    } else if (before?.phase === 'respond' && result.state.phase === 'respond' && before.round === result.state.round) {
+      // 여럿이 응답하는 동안에는 제한 시간을 새로 주지 않는다(한 명이 고를 때마다 늘어나지 않게).
     } else {
       room.deadline = Date.now() + TURN_MS;
     }
   }
 
   private start(room: Room): void {
+    room.seats = room.seats.filter((s) => !absent(s));
+    for (const s of room.seats) s.left = false;
     const first = Math.floor(rng() * room.seats.length);
-    room.game = createGame(room.seats.map((s) => s.name), RULES, first);
+    room.game = createGame(room.seats.map((s) => s.name), rulesFor(room.seats.length), first);
     room.status = 'playing';
     room.events = [];
     room.seq++;
@@ -183,9 +206,11 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private forfeitSeat(room: Room, idx: number): void {
-    this.applyResult(room, forfeit(room.game!, idx));
-    // 결과 화면을 볼 시간을 준 뒤 자리를 정리한다.
-    room.seats[idx]!.offlineSince = Date.now();
+    // 이미 말을 다 잃고 구경하던 사람이 나가는 것은 판에 영향이 없다.
+    if (!room.game!.players[idx]!.out) this.applyResult(room, forfeit(room.game!, idx));
+    // 자리는 판이 끝나고 결과 화면을 볼 시간이 지난 뒤에 정리한다.
+    room.seats[idx]!.left = true;
+    room.seats[idx]!.offlineSince ??= Date.now();
   }
 
   private removeSeat(room: Room, idx: number): void {
@@ -256,10 +281,11 @@ export class GameRoom extends DurableObject<Env> {
         if (room.reserved && !room.reserved.includes(pid)) return reject('매칭된 사람만 들어올 수 있는 방이에요.');
         seat = { pid, name, ready: false, rematch: false, offlineSince: null };
         room.seats.push(seat);
-        if (room.auto && room.seats.length === MAX_SEATS) this.start(room);
+        if (room.auto && room.seats.length === (room.reserved?.length ?? MIN_SEATS)) this.start(room);
       } else if (room.status === 'lobby') {
         seat.name = name;
       }
+      if (room.status !== 'playing') seat.left = false;
 
       for (const old of this.ctx.getWebSockets(pid)) old.close(4000, 'replaced');
       this.ctx.acceptWebSocket(server, [pid]);
@@ -295,13 +321,24 @@ export class GameRoom extends DurableObject<Env> {
       case 'ready':
         if (room.status !== 'lobby') return;
         seat.ready = msg.ready;
-        if (room.seats.length === MAX_SEATS && room.seats.every((s) => s.ready)) this.start(room);
+        break;
+
+      case 'start':
+        // 방장(첫 번째 자리)이 누른다. 방장을 뺀 모두가 준비했어야 한다.
+        if (room.status !== 'lobby' || room.auto) return;
+        if (idx !== 0) return this.send(ws, { t: 'error', message: '방장만 시작할 수 있어요.' });
+        if (room.seats.length < MIN_SEATS) return this.send(ws, { t: 'error', message: '두 명 이상 모여야 시작할 수 있어요.' });
+        if (!room.seats.every((s, i) => i === 0 || s.ready)) return this.send(ws, { t: 'error', message: '아직 준비하지 않은 사람이 있어요.' });
+        this.start(room);
         break;
 
       case 'rematch':
         if (room.status !== 'over') return;
         seat.rematch = true;
-        if (room.seats.length >= RULES.minPlayers && room.seats.every((s) => s.rematch)) this.start(room);
+        {
+          const staying = room.seats.filter((s) => !absent(s));
+          if (staying.length >= MIN_SEATS && staying.every((s) => s.rematch)) this.start(room);
+        }
         break;
 
       case 'act':
@@ -347,13 +384,14 @@ export class GameRoom extends DurableObject<Env> {
     if (room.seats.length === 0) return this.destroy();
 
     const now = Date.now();
-    const gone = room.seats.findIndex((s) => s.offlineSince !== null && now - s.offlineSince >= GRACE_MS);
+    const gone = room.seats.findIndex(
+      (s) => s.offlineSince !== null && now - s.offlineSince >= GRACE_MS && !held(room, s),
+    );
     if (gone >= 0) {
       if (room.status === 'playing') this.forfeitSeat(room, gone);
       else this.removeSeat(room, gone);
     } else if (room.status === 'playing' && room.game && room.deadline !== null && now >= room.deadline) {
-      const who = awaiting(room.game)!;
-      this.applyResult(room, reduce(room.game, who, timeoutAction(room.game, rng), rng));
+      this.applyResult(room, timeout(room.game, rng));
     }
     await this.commit(room);
   }

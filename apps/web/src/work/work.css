@@ -164,3 +164,12 @@
   .sheet.history { width: 100%; }
   .sheet.history td { min-width: 0; }
 }
+
+/* 3~4명: 말 색과 탈락 표시 */
+.sheet .who.p2 { color: #6b2fa0; }
+.sheet .who.p3 { color: #1b6e2b; }
+.sheet.line .item.p2 { background: #e9dcf5; color: #6b2fa0; }
+.sheet.line .item.p3 { background: #dff0d8; color: #1b6e2b; }.sheet.line .review { color: var(--wb-muted); white-space: nowrap; }
+@media (max-width: 720px) {
+  .sheet.line .review, .sheet.line thead th:last-child { display: none; }
+}

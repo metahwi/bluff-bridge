@@ -1,5 +1,7 @@
 // 업무 모드의 첫 화면과 매칭 대기 화면. 하는 일은 게임 화면과 같고, 표 문서처럼 보인다.
-import { RULES } from '@bluff-bridge/engine';
+import { RULES, rulesFor } from '@bluff-bridge/engine';
+
+const MULTI = rulesFor(4);
 import { NAME_MAX } from '@bluff-bridge/protocol/types';
 import type { Me } from '../auth.ts';
 import { WorkChrome } from './WorkChrome.tsx';
@@ -30,9 +32,9 @@ export function WorkHome(p: WorkHomeProps) {
   const guide = [
     `[다시 계산]을 누르면 1~${RULES.maxClaim} 또는 #N/A 값이 나옵니다. 값은 본인만 볼 수 있습니다. 여섯 번 중 두 번은 #N/A입니다.`,
     `1~${RULES.maxClaim} 중 하나를 보고합니다. 실제 값과 달라도 됩니다. #N/A가 나오면 반드시 임의의 값을 보고해야 합니다.`,
-    '상대가 승인하면 보고한 만큼 안건이 결재 단계를 진행합니다.',
-    '상대가 감사를 요청하면 실제 값을 공개합니다. 허위 보고였으면 내 안건이, 정상 보고였으면 상대 안건이 반려됩니다.',
-    `안건 ${RULES.runners}건 중 ${RULES.finishesToWin}건을 먼저 최종 승인받으면 이번 분기 우수 담당자가 됩니다.`,
+    '다른 참여자가 모두 승인하면 보고한 만큼 안건이 결재 단계를 진행합니다.',
+    '누군가 감사를 요청하면 실제 값을 공개합니다. 허위 보고였으면 내 안건이, 정상 보고였으면 감사를 요청한 사람의 안건이 반려됩니다.',
+    `안건 ${RULES.runners}건 중 ${RULES.finishesToWin}건을 먼저 최종 승인받으면 이번 분기 우수 담당자가 됩니다. 3~4명이면 ${MULTI.runners}건 중 ${MULTI.finishesToWin}건입니다.`,
   ];
   let row = 1;
   return (
@@ -82,7 +84,7 @@ export function WorkHome(p: WorkHomeProps) {
                     새 공유 시트
                   </button>
                 </td>
-                <td className="note hint">자동 배정: 지금 접속한 다른 담당자와 연결 / 새 공유 시트: 링크를 보내 초대</td>
+                <td className="note hint">자동 배정: 지금 접속한 다른 담당자와 연결 / 새 공유 시트: 링크를 보내 초대(최대 4명)</td>
               </tr>
               <tr>
                 <th>{row++}</th>

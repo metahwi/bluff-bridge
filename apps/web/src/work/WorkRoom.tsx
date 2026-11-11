@@ -2,8 +2,9 @@
 //   말 = 안건, 다리 = 결재 라인(1~N단계), 완주 = 최종 승인, 먹힘 = 반려,
 //   주사위 = =RANDBETWEEN(), 꽝 = #N/A, 선언 = 보고, 믿기 = 승인, 의심 = 감사 요청, 뻥 = 허위 보고.
 import { useEffect, useState } from 'react';
-import { BLANK, POINTS, emptyStats, scoreOf } from '@bluff-bridge/engine';
+import { BLANK, POINTS, emptyStats, pending, scoreOf } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
+import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { ClientMessage, RoomView } from '@bluff-bridge/protocol/types';
 import type { ChompCue } from '../stage/StageView.tsx';
 import { WorkChrome, columnName } from './WorkChrome.tsx';
@@ -25,7 +26,7 @@ export function describeWork(e: GameEvent, g: PlayerView): string | null {
     case 'claimed':
       return `${n(e.player)}: ${e.value}단계 진행 보고`;
     case 'accepted':
-      return `${n(e.player)} 승인 → ${n(e.roller)} 안건 ${e.steps}단계 진행`;
+      return `${g.players.length > 2 ? '전원' : n(e.player)} 승인 → ${n(e.roller)} 안건 ${e.steps}단계 진행`;
     case 'challenged':
       return e.truth
         ? `${n(e.challenger)} 감사 요청 → 정상 보고(실제 값 ${value(e.die)}). ${n(e.challenger)} 안건 반려`
@@ -39,6 +40,15 @@ export function describeWork(e: GameEvent, g: PlayerView): string | null {
     default:
       return null;
   }
+}
+
+/** 결재 라인 표의 '검토' 칸: 이번 보고에 대해 각자 무엇을 하는 중인지. */
+function reviewStatus(game: PlayerView, i: number): string {
+  if (game.players[i]?.out) return '종료';
+  if (game.phase === 'over') return '';
+  if (game.turn === i) return game.phase === 'respond' ? '보고' : '작성';
+  if (game.phase !== 'respond') return '';
+  return game.replies?.[i] ? '완료' : '검토 중';
 }
 
 function Countdown({ deadline }: { deadline: number | null }) {
@@ -111,7 +121,8 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
   }
 
   const mine = game?.players[me];
-  const status = mine && game ? `승인: ${mine.finished}/${game.rules.finishesToWin}    반려: ${mine.lost}    대기: ${mine.reserve}` : `참여자: ${room.seats.length}/2`;
+  const othersReady = room.seats.every((s, i) => i === 0 || s.ready);
+  const status = mine && game ? `승인: ${mine.finished}/${game.rules.finishesToWin}    반려: ${mine.lost}    대기: ${mine.reserve}` : `참여자: ${room.seats.length}/${MAX_SEATS}`;
 
   const tools = (
     <>
@@ -154,7 +165,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
               <td className="head">상태</td>
               <td className="head">비고</td>
             </tr>
-            {[0, 1].map((i) => {
+            {Array.from({ length: room.auto ? room.seats.length : MAX_SEATS }, (_, i) => i).map((i) => {
               const s = room.seats[i];
               return (
                 <tr key={i}>
@@ -163,15 +174,26 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
                     {s ? s.name : '(미배정)'}
                     {i === me && ' (나)'}
                   </td>
-                  <td>{!s ? '-' : !s.online ? '연결 끊김' : s.ready ? '검토 준비 완료' : '준비 전'}</td>
-                  <td>{i === me && !room.auto && <button className="wbBtn primary" onClick={() => send({ t: 'ready', ready: !seat?.ready })}>{seat?.ready ? '준비 취소' : '준비 완료'}</button>}</td>
+                  <td>{!s ? '-' : !s.online ? '연결 끊김' : i === 0 && !room.auto ? '작성자' : s.ready ? '검토 준비 완료' : '준비 전'}</td>
+                  <td>
+                    {i === me && !room.auto && me !== 0 && (
+                      <button className="wbBtn primary" onClick={() => send({ t: 'ready', ready: !seat?.ready })}>
+                        {seat?.ready ? '준비 취소' : '준비 완료'}
+                      </button>
+                    )}
+                    {i === me && !room.auto && me === 0 && (
+                      <button className="wbBtn primary" disabled={room.seats.length < MIN_SEATS || !othersReady} onClick={() => send({ t: 'start' })}>
+                        검토 시작
+                      </button>
+                    )}
+                  </td>
                 </tr>
               );
             })}
             <tr>
-              <th>4</th>
+              <th>{(room.auto ? room.seats.length : MAX_SEATS) + 2}</th>
               <td colSpan={3} className="note">
-                {room.auto ? '상대가 들어오는 중입니다.' : room.seats.length < 2 ? '공유 링크를 보내 참여자를 초대하세요.' : '두 사람 모두 준비되면 시작합니다.'}
+                {room.auto ? '상대가 들어오는 중입니다.' : room.seats.length < MIN_SEATS ? `공유 링크를 보내 참여자를 초대하세요. (2~${MAX_SEATS}명)` : !othersReady ? '참여자가 모두 준비되면 작성자가 시작합니다.' : me === 0 ? `참여자 ${room.seats.length}명으로 시작할 수 있습니다.` :'작성자가 시작하기를 기다리는 중입니다.'}
               </td>
             </tr>
           </tbody>
@@ -186,7 +208,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
               <thead>
                 <tr>
                   <th className="corner" />
-                  {Array.from({ length: steps.length + 5 }, (_, i) => (
+                  {Array.from({ length: steps.length + 6 }, (_, i) => (
                     <th key={i}>{columnName(i)}</th>
                   ))}
                 </tr>
@@ -204,6 +226,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
                   ))}
                   <td className="head"><span className="long">최종 </span>승인</td>
                   <td className="head">반려</td>
+                  <td className="head review">검토</td>
                 </tr>
                 {(cue && before ? before : game).players.map((p, i) => {
                   const turn = playing && game.turn === i;
@@ -227,12 +250,13 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
                         {p.finished}/{game.rules.finishesToWin}
                       </td>
                       <td className="num bad">{p.lost}</td>
+                      <td className="review">{reviewStatus(game, i)}</td>
                     </tr>
                   );
                 })}
                 <tr>
                   <th>{game.players.length + 2}</th>
-                  <td colSpan={steps.length + 5} className="note">
+                  <td colSpan={steps.length + 6} className="note">
                     ※ 감사팀 상시 대기 중. 허위 보고가 적발되면 해당 안건은 즉시 반려됩니다.
                   </td>
                 </tr>
@@ -275,7 +299,9 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
               ) : (
                 <p>{name(game.turn)} 보고서 작성 중…</p>
               )
-            ) : game.responder === me ? (
+            ) : mine?.out ? (
+              <p>잔여 안건이 없습니다. 열람만 가능합니다.</p>
+            ) : game.turn !== me && !game.replies?.[me] ? (
               <p className="choices">
                 {name(game.turn)}의 보고: <b>{game.claim}단계 진행</b>
                 <button className="wbBtn primary" onClick={() => send({ t: 'act', action: { type: 'accept' } })}>
@@ -287,10 +313,10 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
               </p>
             ) : (
               <p>
-                {game.claim}단계 진행으로 보고했습니다{myTurn ? ` (실제 값 ${value(game.die)})` : ''}. {name(game.responder)} 검토 중…
+                {myTurn ? '' : game.replies?.[me] === 'challenge' ? '감사를 요청했습니다. ' : '승인했습니다. '}{name(game.turn)}: {game.claim}단계 진행 보고{myTurn ? ` (실제 값 ${value(game.die)})` : ''}. {pending(game).map(name).join(', ')} 검토 중…
               </p>
             )}
-            {room.seats.some((s) => !s.online) && room.status === 'playing' && <p className="na">상대의 연결이 끊겼습니다. 1분 안에 돌아오지 않으면 자리 비움으로 처리됩니다.</p>}
+            {room.seats.some((s) => !s.online) && room.status === 'playing' && <p className="na">연결이 끊긴 참여자가 있습니다. 1분 안에 돌아오지 않으면 자리 비움으로 처리됩니다.</p>}
             {error && <p className="na">{error}</p>}
           </div>
 

@@ -8,6 +8,9 @@ import {
   forfeit,
   reduce,
   scoreOf,
+  pending,
+  rulesFor,
+  timeout,
   timeoutAction,
   viewEvent,
   viewFor,
@@ -42,7 +45,7 @@ describe('시작', () => {
       [0, RESERVE],
       [0, RESERVE],
     ]);
-    expect([s.phase, s.turn, s.responder]).toEqual(['roll', 0, 1]);
+    expect([s.phase, s.turn, awaiting(s)]).toEqual(['roll', 0, 0]);
   });
 
   it('인원 수가 범위를 벗어나면 거부', () => {
@@ -82,7 +85,7 @@ describe('믿기', () => {
   it('거짓말이어도 선언한 만큼 전진하고 차례가 넘어간다', () => {
     const s = play(toRespond(createGame(['a', 'b']), BLANK, MAX), 1, { type: 'accept' }).state;
     expect(s.players[0]!.pos).toBe(MAX);
-    expect([s.phase, s.turn, s.responder, s.die, s.claim]).toEqual(['roll', 1, 0, null, null]);
+    expect([s.phase, s.turn, s.die, s.claim]).toEqual(['roll', 1, null, null]);
   });
 });
 
@@ -91,20 +94,20 @@ describe('의심하기', () => {
     const { state, events } = play(toRespond(createGame(['a', 'b']), 2, MAX), 1, { type: 'challenge' });
     expect(state.players[0]).toMatchObject({ pos: 0, reserve: RESERVE - 1, lost: 1 });
     expect(state.players[1]).toMatchObject({ pos: 0, reserve: RESERVE, lost: 0 });
-    expect(events[0]).toMatchObject({ type: 'challenged', die: 2, claim: MAX, truth: false, fallen: 0 });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ type: 'challenged', die: 2, claim: MAX, truth: false, fallen: 0 });
   });
 
   it('진실이면 의심한 사람의 말이 추락하고 굴린 사람은 전진', () => {
     const { state, events } = play(toRespond(createGame(['a', 'b']), 4, 4), 1, { type: 'challenge' });
     expect(state.players[0]).toMatchObject({ pos: 4, lost: 0 });
     expect(state.players[1]).toMatchObject({ pos: 0, reserve: RESERVE - 1, lost: 1 });
-    expect(events[0]).toMatchObject({ truth: true, fallen: 1 });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ truth: true, fallen: 1 });
   });
 
   it('꽝은 어떤 선언을 해도 거짓말', () => {
     for (let claim = 1; claim <= RULES.maxClaim; claim++) {
       const { events } = play(toRespond(createGame(['a', 'b']), BLANK, claim), 1, { type: 'challenge' });
-      expect(events[0]).toMatchObject({ truth: false, fallen: 0 });
+      expect(events.find((e) => e.type === 'challenged')).toMatchObject({ truth: false, fallen: 0 });
     }
   });
 });
@@ -164,19 +167,79 @@ describe('말이 떨어졌을 때의 승패', () => {
   });
 });
 
-describe('4인', () => {
-  it('응답은 다음 차례 사람이 하고, 탈락자는 건너뛴다', () => {
-    const s0 = createGame(['a', 'b', 'c', 'd']);
-    expect(s0.responder).toBe(1);
+describe('여럿이 할 때의 응답', () => {
+  const four = () => createGame(['a', 'b', 'c', 'd'], rulesFor(4));
+
+  it('굴린 사람을 뺀 모두가 응답하고, 모두 믿어야 전진한다', () => {
+    let s = toRespond(four(), 3, 3);
+    expect(pending(s)).toEqual([1, 2, 3]);
+    s = play(s, 2, { type: 'accept' }).state;
+    expect([s.phase, pending(s)]).toEqual(['respond', [1, 3]]);
+    expect(() => play(s, 2, { type: 'challenge' })).toThrow(GameError);
+    expect(() => play(s, 0, { type: 'accept' })).toThrow(GameError);
+    s = play(s, 1, { type: 'accept' }).state;
+    const { state, events } = play(s, 3, { type: 'accept' });
+    expect(state.players[0]!.pos).toBe(3);
+    expect([state.phase, state.turn]).toEqual(['roll', 1]);
+    expect(events.some((e) => e.type === 'accepted')).toBe(true);
+  });
+
+  it('여럿이 의심하면 차례가 가장 가까운 사람이 의심자가 된다', () => {
+    let s = toRespond(four(), 3, 3); // 진실
+    s = play(s, 3, { type: 'challenge' }).state;
+    // d가 먼저 눌렀어도 앞 순서인 b, c의 선택을 기다린다
+    expect([s.phase, pending(s)]).toEqual(['respond', [1, 2]]);
+    s = play(s, 1, { type: 'accept' }).state;
+    const { state, events } = play(s, 2, { type: 'challenge' });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ challenger: 2, truth: true, fallen: 2 });
+    expect(state.players.map((p) => p.lost)).toEqual([0, 0, 1, 0]);
+    expect(state.stats.map((x) => x.challenges)).toEqual([0, 0, 1, 0]);
+  });
+
+  it('가장 가까운 사람이 의심하면 나머지를 기다리지 않고 바로 공개한다', () => {
+    const { state, events } = play(toRespond(four(), BLANK, 2), 1, { type: 'challenge' });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ challenger: 1, truth: false, fallen: 0 });
+    expect([state.phase, state.turn]).toEqual(['roll', 1]);
+    expect(state.replies).toEqual([null, null, null, null]);
+  });
+
+  it('탈락한 사람은 응답하지 않고 차례도 건너뛴다', () => {
+    const s0 = four();
     Object.assign(s0.players[1]!, { reserve: 0 });
     // b가 a의 진실을 의심 → b 탈락
     const s1 = play(toRespond(s0, 3, 3), 1, { type: 'challenge' }).state;
     expect(s1.players[1]!.out).toBe(true);
-    expect([s1.phase, s1.turn, s1.responder]).toEqual(['roll', 2, 3]);
-    // c, d 차례가 지나면 다시 a이고 응답자는 b를 건너뛴 c
-    let s = play(toRespond(s1, 1, 1), 3, { type: 'accept' }).state;
-    s = play(toRespond(s, 1, 1), 0, { type: 'accept' }).state;
-    expect([s.turn, s.responder]).toEqual([0, 2]);
+    expect([s1.phase, s1.turn]).toEqual(['roll', 2]);
+    expect(pending(toRespond(s1, 1, 1))).toEqual([3, 0]);
+  });
+
+  it('남의 응답은 골랐는지만 보이고 내용은 보이지 않는다', () => {
+    const s = play(toRespond(four(), 3, 3), 3, { type: 'challenge' }).state;
+    expect(viewFor(s, 3).replies).toEqual([null, null, null, 'challenge']);
+    expect(viewFor(s, 1).replies).toEqual([null, null, null, 'hidden']);
+    expect(JSON.stringify(viewFor(s, 1))).not.toContain('challenge');
+  });
+
+  it('시간이 지나면 고르지 않은 사람은 모두 믿은 것으로 친다', () => {
+    const s = play(toRespond(four(), 3, 3), 2, { type: 'accept' }).state;
+    const { state, events } = timeout(s, () => 0);
+    expect(state.players[0]!.pos).toBe(3);
+    expect([state.phase, state.turn]).toEqual(['roll', 1]);
+    expect(events.filter((e) => e.type === 'replied').length).toBe(2);
+    // 굴리기 단계의 시간 초과는 한 수만 둔다
+    expect(timeout(state, () => 0).state.phase).toBe('claim');
+  });
+
+  it('이미 의심한 사람이 있으면 시간 초과 때 그 의심이 살아난다', () => {
+    const s = play(toRespond(four(), BLANK, 4), 3, { type: 'challenge' }).state;
+    const { events } = timeout(s, () => 0);
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ challenger: 3, fallen: 0 });
+  });
+
+  it('셋 이상이면 말 5개, 완주 2번', () => {
+    expect(rulesFor(2)).toMatchObject({ runners: RULES.runners, finishesToWin: RULES.finishesToWin });
+    expect(rulesFor(3)).toMatchObject({ runners: 5, finishesToWin: 2 });
+    expect(four().players[0]!.reserve).toBe(4);
   });
 });
 
@@ -191,15 +254,19 @@ describe('기권', () => {
 
   it('4인에서 굴릴 차례인 사람이 기권하면 다음 사람 차례가 된다', () => {
     const s = forfeit(toRespond(createGame(['a', 'b', 'c', 'd']), 3, 3), 0).state;
-    expect([s.phase, s.turn, s.responder, s.die, s.claim]).toEqual(['roll', 1, 2, null, null]);
+    expect([s.phase, s.turn, s.die, s.claim]).toEqual(['roll', 1, null, null]);
+    expect(s.players.filter((p) => !p.out).length).toBe(3);
   });
 
-  it('4인에서 응답할 사람이 기권하면 그 다음 사람이 응답한다', () => {
-    const s = forfeit(toRespond(createGame(['a', 'b', 'c', 'd']), 3, 3), 1).state;
-    expect([s.phase, s.turn, s.responder, s.claim]).toEqual(['respond', 0, 2, 3]);
+  it('4인에서 응답을 기다리던 사람이 기권하면 남은 응답으로 판정한다', () => {
+    let s = toRespond(createGame(['a', 'b', 'c', 'd']), 3, 3);
+    s = play(s, 2, { type: 'accept' }).state;
+    s = play(s, 3, { type: 'accept' }).state;
+    expect(s.phase).toBe('respond');
+    const after = forfeit(s, 1).state;
+    expect([after.phase, after.turn, after.players[0]!.pos]).toEqual(['roll', 2, 3]);
   });
 });
-
 describe('정보 은닉', () => {
   it('주사위 눈은 굴린 본인에게만 보인다', () => {
     const rolled = play(createGame(['a', 'b']), 0, { type: 'roll' }, 4);
@@ -220,7 +287,7 @@ describe('정보 은닉', () => {
 
   it('의심으로 공개된 주사위는 모두에게 보인다', () => {
     const { events } = play(toRespond(createGame(['a', 'b']), 2, MAX), 1, { type: 'challenge' });
-    expect(viewEvent(events[0]!, null)).toMatchObject({ die: 2 });
+    expect(viewEvent(events.find((e) => e.type === 'challenged')!, null)).toMatchObject({ die: 2 });
   });
 });
 

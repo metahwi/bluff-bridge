@@ -1,6 +1,6 @@
 import { BLANK } from './rules.ts';
 import type { Rules } from './rules.ts';
-import { awaiting, emptyStats, nextActive } from './state.ts';
+import { emptyStats, nextActive, pending, responders } from './state.ts';
 import type { Action, GameEvent, GameState, Player } from './state.ts';
 
 /** 규칙에 어긋나는 행동. 서버는 이 오류를 그대로 요청자에게 돌려준다. */
@@ -8,6 +8,8 @@ export class GameError extends Error {}
 
 /** [0, 1) 범위의 난수. 서버는 crypto 기반, 테스트는 고정값을 넣는다. */
 export type Rng = () => number;
+
+type Result = { state: GameState; events: GameEvent[] };
 
 export function rollDie(rules: Rules, rng: Rng): number {
   return rules.dieFaces[Math.floor(rng() * rules.dieFaces.length)]!;
@@ -42,9 +44,14 @@ function advance(state: GameState, idx: number, steps: number, events: GameEvent
   }
 }
 
-function endTurn(state: GameState, events: GameEvent[]): void {
+function clearTurn(state: GameState): void {
   state.die = null;
   state.claim = null;
+  state.replies = state.players.map(() => null);
+}
+
+function endTurn(state: GameState, events: GameEvent[]): void {
+  clearTurn(state);
 
   let winner = state.players.findIndex((p) => p.finished >= state.rules.finishesToWin);
   if (winner === -1) {
@@ -65,9 +72,41 @@ function endTurn(state: GameState, events: GameEvent[]): void {
   }
 
   state.turn = nextActive(state, state.turn);
-  state.responder = nextActive(state, state.turn);
   state.phase = 'roll';
   state.round++;
+}
+
+/**
+ * 모인 응답으로 판정한다. 굴린 사람 다음 차례부터 순서대로 본다.
+ *  - 의심한 사람을 만나면 그 사람이 의심자가 되어 주사위를 공개한다(뒤 순서의 의심은 없던 일이 된다).
+ *  - 아직 고르지 않은 사람을 만나면 그 사람을 기다린다.
+ *  - 끝까지 모두 믿었으면 선언한 만큼 전진한다.
+ * 그래서 여럿이 의심해도 추락 위험을 지는 사람은 차례가 가장 가까운 한 명뿐이다.
+ */
+function settle(state: GameState, events: GameEvent[]): void {
+  const order = responders(state);
+  const die = state.die!;
+  const claim = state.claim!;
+  const truth = die !== BLANK && die === claim;
+
+  for (const who of order) {
+    const reply = state.replies[who];
+    if (!reply) return;
+    if (reply === 'accept') continue;
+    const fallen = truth ? who : state.turn;
+    state.stats[who]!.challenges++;
+    if (!truth) state.stats[who]!.challengesWon++;
+    events.push({ type: 'challenged', challenger: who, roller: state.turn, die, claim, truth, fallen });
+    fall(state, fallen, events);
+    if (truth) advance(state, state.turn, claim, events);
+    return endTurn(state, events);
+  }
+
+  if (order.length === 0) return endTurn(state, events);
+  if (!truth) state.stats[state.turn]!.bluffsPassed++;
+  events.push({ type: 'accepted', player: order[0]!, roller: state.turn, steps: claim });
+  advance(state, state.turn, claim, events);
+  endTurn(state, events);
 }
 
 /**
@@ -75,20 +114,18 @@ function endTurn(state: GameState, events: GameEvent[]): void {
  * 반환되는 events에는 비공개 정보(rolled의 die)가 들어 있으므로
  * 클라이언트로 보낼 때는 반드시 viewEvent를 거친다.
  */
-export function reduce(
-  prev: GameState,
-  player: number,
-  action: Action,
-  rng: Rng,
-): { state: GameState; events: GameEvent[] } {
+export function reduce(prev: GameState, player: number, action: Action, rng: Rng): Result {
   if (prev.phase === 'over') throw new GameError('게임이 끝났어요.');
-  if (awaiting(prev) !== player) throw new GameError('지금은 내 차례가 아니에요.');
 
   const state = structuredClone(prev);
   const events: GameEvent[] = [];
-  // 기록 기능이 생기기 전에 시작한 판(서버에 저장돼 있던 진행 중인 판)도 이어서 둘 수 있게 한다.
+  // 기록·동시 응답 기능이 생기기 전에 시작한 판(서버에 저장돼 있던 진행 중인 판)도 이어서 둘 수 있게 한다.
   state.stats ??= state.players.map(emptyStats);
-  const bluffing = state.die !== null && state.claim !== null && (state.die === BLANK || state.die !== state.claim);
+  state.replies ??= state.players.map(() => null);
+
+  if (!pending(state).includes(player)) {
+    throw new GameError(state.phase === 'respond' && state.replies[player] ? '이미 골랐어요.' : '지금은 내 차례가 아니에요.');
+  }
 
   switch (action.type) {
     case 'roll': {
@@ -110,27 +147,12 @@ export function reduce(
       events.push({ type: 'claimed', player, value: v });
       break;
     }
-    case 'accept': {
-      if (state.phase !== 'respond') throw new GameError('지금은 응답할 수 없어요.');
-      const steps = state.claim!;
-      if (bluffing) state.stats[state.turn]!.bluffsPassed++;
-      events.push({ type: 'accepted', player, roller: state.turn, steps });
-      advance(state, state.turn, steps, events);
-      endTurn(state, events);
-      break;
-    }
+    case 'accept':
     case 'challenge': {
       if (state.phase !== 'respond') throw new GameError('지금은 응답할 수 없어요.');
-      const die = state.die!;
-      const claim = state.claim!;
-      const truth = die !== BLANK && die === claim;
-      const fallen = truth ? player : state.turn;
-      state.stats[player]!.challenges++;
-      if (!truth) state.stats[player]!.challengesWon++;
-      events.push({ type: 'challenged', challenger: player, roller: state.turn, die, claim, truth, fallen });
-      fall(state, fallen, events);
-      if (truth) advance(state, state.turn, claim, events);
-      endTurn(state, events);
+      state.replies[player] = action.type;
+      events.push({ type: 'replied', player });
+      settle(state, events);
       break;
     }
     default:
@@ -141,9 +163,11 @@ export function reduce(
 }
 
 /** 기권(나가기·접속 끊김). 완주 수와 상관없이 남은 사람이 한 명이면 그 사람이 이긴다. */
-export function forfeit(prev: GameState, player: number): { state: GameState; events: GameEvent[] } {
+export function forfeit(prev: GameState, player: number): Result {
   if (prev.phase === 'over') throw new GameError('게임이 끝났어요.');
   const state = structuredClone(prev);
+  state.stats ??= state.players.map(emptyStats);
+  state.replies ??= state.players.map(() => null);
   const p = state.players[player];
   if (!p || p.out) throw new GameError('기권할 수 없어요.');
   const events: GameEvent[] = [{ type: 'forfeit', player }];
@@ -155,18 +179,16 @@ export function forfeit(prev: GameState, player: number): { state: GameState; ev
   if (active.length === 1) {
     state.phase = 'over';
     state.winner = active[0]!;
-    state.die = null;
-    state.claim = null;
+    clearTurn(state);
     events.push({ type: 'over', winner: state.winner });
   } else if (state.turn === player) {
-    state.die = null;
-    state.claim = null;
+    clearTurn(state);
     state.turn = nextActive(state, player);
-    state.responder = nextActive(state, state.turn);
     state.phase = 'roll';
     state.round++;
-  } else if (state.responder === player) {
-    state.responder = nextActive(state, state.turn);
+  } else if (state.phase === 'respond') {
+    // 응답을 기다리던 사람이 나갔으면 남은 사람들의 응답으로 판정한다.
+    settle(state, events);
   }
   return { state, events };
 }
@@ -186,4 +208,20 @@ export function timeoutAction(state: GameState, rng: Rng): Action {
     default:
       throw new GameError('게임이 끝났어요.');
   }
+}
+
+/** 제한 시간이 지났을 때의 처리. 응답 단계에서는 아직 고르지 않은 모두가 '믿기'를 고른 것으로 친다. */
+export function timeout(prev: GameState, rng: Rng): Result {
+  let state = prev;
+  const events: GameEvent[] = [];
+  const round = prev.round;
+  const phase = prev.phase;
+  do {
+    const who = pending(state)[0];
+    if (who === undefined) break;
+    const step = reduce(state, who, timeoutAction(state, rng), rng);
+    state = step.state;
+    events.push(...step.events);
+  } while (phase === 'respond' && state.phase === 'respond' && state.round === round);
+  return { state, events };
 }

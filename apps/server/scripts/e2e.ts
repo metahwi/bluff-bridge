@@ -1,8 +1,8 @@
-// 실행 중인 서버(wrangler dev)에 두 명이 접속해 한 판을 끝까지 두는 테스트.
+// 실행 중인 서버(wrangler dev)에 네 명이 접속해 한 판을 끝까지 두는 테스트.
 // 핵심 확인: 차례가 아닌 사람에게 주사위 눈이 한 번도 전송되지 않는다.
 // 사용: node scripts/e2e.ts [서버 주소]
 import { readFileSync } from 'node:fs';
-import { BLANK, awaiting } from '../../../packages/engine/src/index.ts';
+import { BLANK, pending } from '../../../packages/engine/src/index.ts';
 import type { RoomView, ServerMessage, ClientMessage, MatchMessage } from '../../../packages/protocol/src/types.ts';
 
 const base = process.argv[2] ?? 'http://127.0.0.1:8787';
@@ -124,43 +124,62 @@ const b = await connect(code, '비', cookieB);
 await until(() => a.room?.seats.length === 2 && b.room?.seats.length === 2, '두 명 입장');
 check(a.room!.seats.map((s) => s.name).join() === '에이,비', `방에 표시된 이름이 다름: ${a.room!.seats.map((s) => s.name)}`);
 
-// 2. 세 번째 사람은 거절
-const c = await connect(code, '씨', await guest('씨'));
-await until(() => c.closed !== null, '세 번째 입장 거절');
-check(c.closed === 4003 && c.errors.length === 1, `세 번째 입장이 거절되지 않음 (close=${c.closed})`);
+// 2. 네 명까지 들어오고 다섯 번째 사람은 거절
+const cookieC = await guest('씨');
+const cookieD = await guest('디');
+const c = await connect(code, '씨', cookieC);
+const d = await connect(code, '디', cookieD);
+await until(() => a.room?.seats.length === 4 && d.room?.seats.length === 4, '네 명 입장');
+const fifth = await connect(code, '이', await guest('이'));
+await until(() => fifth.closed !== null, '다섯 번째 입장 거절');
+check(fifth.closed === 4003 && fifth.errors.length === 1, `다섯 번째 입장이 거절되지 않음 (close=${fifth.closed})`);
+const all = [a, b, c, d];
 
-// 3. 둘 다 준비하면 시작
-send(a, { t: 'ready', ready: true });
-await sleep(100);
-check(a.room?.status === 'lobby', '한 명만 준비했는데 시작됨');
+// 3. 방장(첫 번째로 들어온 사람)만, 나머지가 모두 준비한 뒤에 시작할 수 있다
 send(b, { t: 'ready', ready: true });
-await until(() => a.room?.status === 'playing' && b.room?.status === 'playing', '게임 시작');
+send(c, { t: 'ready', ready: true });
+await sleep(100);
+send(a, { t: 'start' });
+await until(() => a.errors.length === 1, '준비 안 된 사람이 있을 때 시작 거절');
+check(a.room?.status === 'lobby', '준비하지 않은 사람이 있는데 시작됨');
+send(d, { t: 'ready', ready: true });
+await sleep(100);
+send(b, { t: 'start' });
+await until(() => b.errors.length === 1, '방장이 아닌 사람의 시작 거절');
+check(a.room?.status === 'lobby', '방장이 아닌 사람이 시작함');
+send(a, { t: 'start' });
+await until(() => all.every((x) => x.room?.status === 'playing'), '게임 시작');
+const rules = a.room!.game!.rules;
+check(a.room!.game!.players.length === 4 && rules.runners === 5 && rules.finishesToWin === 2, `4인 규칙이 아님: ${JSON.stringify(rules)}`);
 
 // 4. 차례가 아닌 사람의 행동은 거절
-const notTurn = a.room!.game!.turn === a.room!.me ? b : a;
+const notTurn = all.find((x) => x.room!.game!.turn !== x.room!.me)!;
+const before = notTurn.errors.length;
 send(notTurn, { t: 'act', action: { type: 'roll' } });
-await until(() => notTurn.errors.length === 1, '차례 아닌 행동 거절');
+await until(() => notTurn.errors.length === before + 1, '차례 아닌 행동 거절');
 
 // 5. 끝날 때까지 자동으로 둔다. 거짓말과 의심을 섞는다.
 let moves = 0;
 let challenges = 0;
 let claims = 0;
-let fives = 0;
+let doubts = 0;
 function autoplay(cl: Client) {
   let acted = -1;
   const step = (room: RoomView) => {
     const g = room.game;
-    if (room.status !== 'playing' || !g || awaiting(g) !== room.me || acted === room.seq) return;
+    if (room.status !== 'playing' || !g || !pending(g).includes(room.me) || acted === room.seq) return;
     acted = room.seq;
     moves++;
+    // 남의 응답은 골랐는지만 보여야 한다.
+    check(g.replies.every((r, i) => i === room.me || r === null || r === 'hidden'), `${cl.name}: 남의 응답 내용이 전송됨`);
     if (g.phase === 'roll') send(cl, { t: 'act', action: { type: 'roll' } });
     else if (g.phase === 'claim') {
-      // 두 번에 한 번은 5라고 뻥친다.
+      // 두 번에 한 번은 가장 큰 숫자라고 뻥친다.
       const lie = g.die === BLANK || claims++ % 2 === 0;
       send(cl, { t: 'act', action: { type: 'claim', value: lie ? g.rules.maxClaim : g.die! } });
     } else {
-      // 5라는 선언은 두 번에 한 번 의심한다 (첫 번째는 반드시).
-      const doubt = g.claim === g.rules.maxClaim && fives++ % 2 === 0;
+      // 가장 큰 숫자라는 선언은 세 번에 한 번 의심한다 (첫 번째는 반드시).
+      const doubt = g.claim === g.rules.maxClaim && doubts++ % 3 === 0;
       if (doubt) challenges++;
       send(cl, { t: 'act', action: { type: doubt ? 'challenge' : 'accept' } });
     }
@@ -168,42 +187,45 @@ function autoplay(cl: Client) {
   cl.onState = step;
   if (cl.room) step(cl.room);
 }
-autoplay(a);
-autoplay(b);
-await until(() => a.room?.status === 'over' && b.room?.status === 'over', '게임 종료', 30_000);
+all.forEach(autoplay);
+await until(() => all.every((x) => x.room?.status === 'over'), '게임 종료', 60_000);
 const g = a.room!.game!;
 console.log(`게임 종료: ${g.round}턴, 행동 ${moves}번, 의심 ${challenges}번, 승자 ${g.players[g.winner!]!.name}`);
-check(a.room!.game!.winner === b.room!.game!.winner, '두 사람이 본 승자가 다름');
+check(all.every((x) => x.room!.game!.winner === g.winner), '사람마다 본 승자가 다름');
 check(challenges > 0, '의심이 한 번도 일어나지 않아 공개 연출을 확인하지 못함');
 // 끝난 뒤에는 점수표에 쓸 기록이 온다. 자동 대결은 두 번에 한 번 뻥을 치므로 뻥 기록이 있어야 한다.
 const stats = a.room!.game!.stats;
-check(Array.isArray(stats) && stats.length === 2, '끝났는데 판 기록이 오지 않음');
-check((stats?.[0]?.bluffs ?? 0) + (stats?.[1]?.bluffs ?? 0) > 0, '뻥 기록이 0');
+check(Array.isArray(stats) && stats.length === 4, '끝났는데 판 기록이 오지 않음');
+check((stats ?? []).reduce((n, x) => n + x.bluffs, 0) > 0, '뻥 기록이 0');
 console.log('판 기록:', JSON.stringify(stats));
 
-// 5-1. 전적이 두 사람 모두에게 기록된다
+// 5-1. 전적이 모두에게 기록된다
 const winnerIsA = g.winner === a.room!.me;
 const [recA, recB] = [(await me(cookieA)).records!, (await me(cookieB)).records!];
 check(recA.played === 1 && recB.played === 1, `전적 판 수가 다름: ${recA.played}, ${recB.played}`);
-check(recA.won === (winnerIsA ? 1 : 0) && recB.won === (winnerIsA ? 0 : 1), '전적의 승패가 실제 결과와 다름');
-check(recA.recent[0]?.opponents === '비' && recB.recent[0]?.opponents === '에이', '전적의 상대 이름이 다름');
+check(recA.won === (winnerIsA ? 1 : 0), '전적의 승패가 실제 결과와 다름');
+check(!!recA.recent[0]?.opponents.includes('비') && !!recB.recent[0]?.opponents.includes('에이'), `전적의 상대 이름이 다름: ${recA.recent[0]?.opponents}`);
 
-// 6. 다시 하기
-a.onState = b.onState = () => {};
-send(a, { t: 'rematch' });
-send(b, { t: 'rematch' });
-await until(() => a.room?.status === 'playing' && b.room?.status === 'playing', '다시 하기');
+// 6. 다시 하기: 모두 눌러야 시작한다
+for (const x of all) x.onState = () => {};
+for (const x of all) send(x, { t: 'rematch' });
+await until(() => all.every((x) => x.room?.status === 'playing'), '다시 하기');
 
-// 7. 게임 중 나가면 상대가 이긴다
+// 7. 여럿이 하는 판에서 한 명이 나가도 판은 계속되고, 한 명만 남으면 그 사람이 이긴다
 send(a, { t: 'leave' });
+await until(() => b.room!.events.some((e) => e.type === 'forfeit'), '기권 알림');
+check(b.room!.status === 'playing' && b.room!.game!.players[0]!.out, '한 명이 나갔는데 판이 계속되지 않음');
+check(b.room!.seats.length === 4, '판 도중에 자리 번호가 바뀜');
+send(c, { t: 'leave' });
+await until(() => b.room!.game!.players[2]!.out, '두 번째 기권');
+check(b.room!.status === 'playing', '두 명이 남았는데 판이 끝남');
+send(d, { t: 'leave' });
 await until(() => b.room?.status === 'over', '기권 처리');
-check(b.room!.game!.winner === b.room!.me, '상대가 나갔는데 내가 이기지 않음');
-check(b.room!.events.some((e) => e.type === 'forfeit'), '기권 이벤트가 없음');
+check(b.room!.game!.winner === b.room!.me, '혼자 남았는데 내가 이기지 않음');
 const afterForfeit = (await me(cookieB)).records!;
 check(afterForfeit.played === 2 && afterForfeit.recent[0]?.reason === 'forfeit' && afterForfeit.recent[0].won, '기권 판이 전적에 기록되지 않음');
 
 b.ws.close();
-
 // 8. 빠른 매칭: 두 명이 대기열에 서면 같은 방 코드를 받고, 준비 없이 바로 시작한다
 /** got: 지금까지 받은 메시지, done: 연결이 닫힐 때 끝나는 약속. */
 function queue(cookie: string): { got: MatchMessage[]; done: Promise<MatchMessage[]> } {

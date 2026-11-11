@@ -33,3 +33,11 @@ export const RULES: Rules = {
   minPlayers: 2,
   maxPlayers: 4,
 };
+
+/**
+ * 인원 수에 맞는 규칙. 셋 이상이면 내 차례가 덜 자주 오므로, 2인 규칙 그대로는 한 판이
+ * 40~50턴으로 늘어진다(scripts/sim.ts). 완주 2번·말 5개로 줄이면 2인과 비슷한 25턴 안팎이 된다.
+ */
+export function rulesFor(players: number): Rules {
+  return players <= 2 ? RULES : { ...RULES, runners: 5, finishesToWin: 2 };
+}

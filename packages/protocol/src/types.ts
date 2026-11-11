@@ -6,12 +6,16 @@ import type { Action, GameEvent, PlayerView } from '@bluff-bridge/engine';
 export const TURN_MS = 30_000;
 /** 접속이 끊긴 뒤 기권 처리까지 기다리는 시간. */
 export const GRACE_MS = 60_000;
-export const MAX_SEATS = 2;
+/** 한 방에 들어올 수 있는 인원. 2명 이상 모이면 방장이 시작할 수 있다. */
+export const MAX_SEATS = 4;
+export const MIN_SEATS = 2;
 export const NAME_MAX = 16;
 export const ROOM_CODE = /^[A-HJKMNP-Z2-9]{6}$/;
 
 export type ClientMessage =
   | { t: 'ready'; ready: boolean }
+  /** 방장(첫 번째 자리)만 보낼 수 있다. 다른 사람이 모두 준비했으면 판을 시작한다. */
+  | { t: 'start' }
   | { t: 'act'; action: Action }
   | { t: 'rematch' }
   | { t: 'leave' };
@@ -26,8 +30,9 @@ export interface SeatView {
 export interface RoomView {
   code: string;
   status: 'lobby' | 'playing' | 'over';
-  /** 빠른 매칭으로 만들어진 방. 두 명이 모이면 바로 시작한다. */
+  /** 빠른 매칭으로 만들어진 방. 매칭된 사람이 모두 모이면 바로 시작한다. */
   auto: boolean;
+  /** 자리 목록. 첫 번째 자리가 방장이다. */
   seats: SeatView[];
   /** 내 자리 번호. 게임 중에는 game.players의 번호와 같다. */
   me: number;

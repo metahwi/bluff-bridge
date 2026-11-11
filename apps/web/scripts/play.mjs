@@ -36,8 +36,8 @@ await b.goto(link);
 await b.getByLabel('닉네임').fill('비');
 await b.getByRole('button', { name: /입장$/ }).click();
 
-await button(a, '준비 완료').click();
 await button(b, '준비 완료').click();
+await button(a, '게임 시작').click();
 await a.getByText('완주').first().waitFor();
 await a.waitForTimeout(1500);
 await shot(a, 'start');

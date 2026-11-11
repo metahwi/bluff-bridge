@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { BLANK, RULES } from '@bluff-bridge/engine';
+import { BLANK, RULES, pending, responders } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
+import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { RoomView } from '@bluff-bridge/protocol/types';
 import { Die, Pawn } from './pixel.tsx';
 import { sound } from './sound.ts';
@@ -41,7 +42,7 @@ function describe(e: GameEvent, g: PlayerView): string | null {
     case 'claimed':
       return `${n(e.player)}: "${e.value}칸!"`;
     case 'accepted':
-      return `${n(e.player)}가 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.`;
+      return g.players.length > 2 ? `모두 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.` : `${n(e.player)}가 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.`;
     case 'challenged':
       return e.truth
         ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 말이 하마 밥이 됐어요.`
@@ -57,15 +58,26 @@ function describe(e: GameEvent, g: PlayerView): string | null {
   }
 }
 
+/** 점수판 이름 옆의 한마디: 지금 무엇을 하는 중인지. */
+function plateStatus(game: PlayerView, i: number): string {
+  const p = game.players[i]!;
+  if (p.out) return '탈락';
+  if (game.phase === 'over') return '';
+  if (game.turn === i) return game.phase === 'respond' ? '선언함' : '차례';
+  if (game.phase !== 'respond') return '';
+  return game.replies?.[i] ? '골랐음' : '고르는 중';
+}
+
 function Plates({ game, me }: { game: PlayerView; me: number }) {
   return (
-    <section className="plates">
+    <section className={'plates n' + game.players.length}>
       {game.players.map((p, i) => (
-        <div key={i} className={'plate' + (game.phase !== 'over' && game.turn === i ? ' active' : '')}>
+        <div key={i} className={'plate' + (game.phase !== 'over' && game.turn === i ? ' active' : '') + (p.out ? ' out' : '')}>
           <div className="plateName">
             <Pawn player={i} scale={2} />
             <b>{p.name}</b>
             {i === me && <small>나</small>}
+            <em>{plateStatus(game, i)}</em>
           </div>
           <dl>
             <div>
@@ -108,6 +120,10 @@ function Actions({
   const name = (i: number) => game.players[i]?.name ?? '?';
   /** 이번 턴에 이미 던졌는지(서버 응답을 기다리는 짧은 동안 단추를 잠근다). */
   const [thrownRound, setThrownRound] = useState(-1);
+  const many = game.players.length > 2;
+
+  // 말을 모두 잃은 사람은 끝까지 구경한다.
+  if (game.players[me]?.out) return <h2>말을 모두 잃었어요. 구경하는 중…</h2>;
 
   if (game.phase === 'roll') {
     return myTurn ? (
@@ -154,13 +170,16 @@ function Actions({
   }
 
   if (game.phase === 'respond') {
-    if (game.responder !== me) {
+    const waitingFor = pending(game).map(name).join(', ');
+    const mine = game.replies?.[me];
+    if (myTurn || mine) {
       return (
         <>
           {myTurn && <Die value={game.die} />}
           <h2>
-            "{game.claim}칸!" {name(game.responder)}의 선택을 기다리는 중…
+            {myTurn ? `"${game.claim}칸!"` : mine === 'challenge' ? '의심하기로 했어요.' : '믿기로 했어요.'} {waitingFor}의 선택을 기다리는 중…
           </h2>
+          {mine === 'challenge' && many && <small>나보다 차례가 가까운 사람이 먼저 의심하면 그 사람이 의심자가 돼요.</small>}
         </>
       );
     }
@@ -169,6 +188,11 @@ function Actions({
         <h2>
           {name(game.turn)}: "{game.claim}칸!"
         </h2>
+        {many && (
+          <small>
+            여럿이 의심하면 차례가 가까운 사람({responders(game).map(name).join(' → ')} 순)이 의심자가 돼요.
+          </small>
+        )}
         <div className="row">
           <button className="ghost" onClick={() => send({ t: 'act', action: { type: 'accept' } })}>
             믿기
@@ -379,6 +403,8 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   }
 
   const me = room.seats[room.me];
+  /** 방장(첫 번째 자리)을 뺀 모두가 준비했는지. */
+  const othersReady = room.seats.every((s, i) => i === 0 || s.ready);
   const winner = game?.winner ?? null;
   const inGame = game && room.status !== 'lobby';
   // 상대가 나가거나 접속이 끊겨 끝난 판이면 결과 화면에 따로 알린다.
@@ -441,25 +467,36 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
               <h2>
                 {room.auto
                   ? '상대가 들어오는 중…'
-                  : room.seats.length < 2
+                  : room.seats.length < MIN_SEATS
                     ? '친구를 기다리는 중…'
-                    : '둘 다 준비하면 시작해요.'}
+                    : !othersReady
+                      ? '모두 준비하면 방장이 시작해요.'
+                      : room.me === 0
+                        ? `${room.seats.length}명으로 시작할 수 있어요.`
+                        : '방장이 시작하기를 기다리는 중…'}
               </h2>
               <ul className="seats">
-                {[0, 1].map((i) => {
+                {Array.from({ length: room.auto ? room.seats.length : MAX_SEATS }, (_, i) => {
                   const s = room.seats[i];
                   return (
-                    <li key={i}>
+                    <li key={i} className={s ? '' : 'vacant'}>
                       <Pawn player={i} scale={2} />
                       {s ? s.name : '빈자리'}
                       {i === room.me && <small> (나)</small>}
-                      <em>{!s ? '' : !s.online ? '접속 끊김' : s.ready ? '준비 완료' : '준비 전'}</em>
+                      <em>{!s ? '' : !s.online ? '접속 끊김' : i === 0 && !room.auto ? '방장' : s.ready ? '준비 완료' : '준비 전'}</em>
                     </li>
                   );
                 })}
               </ul>
               {room.auto ? (
                 <small>상대가 오지 않으면 나가서 다시 매칭해 주세요.</small>
+              ) : room.me === 0 ? (
+                <>
+                  <button disabled={room.seats.length < MIN_SEATS || !othersReady} onClick={() => send({ t: 'start' })}>
+                    게임 시작
+                  </button>
+                  <small>2~{MAX_SEATS}명이 할 수 있어요. 초대 링크를 보내 친구를 불러 주세요.</small>
+                </>
               ) : (
                 <button className={me?.ready ? 'ghost' : ''} onClick={() => send({ t: 'ready', ready: !me?.ready })}>
                   {me?.ready ? '준비 취소' : '준비 완료'}
@@ -478,9 +515,9 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                   <>
                     <Countdown deadline={deadline} />
                     <Actions room={room} game={game} send={send} controls={controls} settled={settled} />
-                    {room.seats.some((s) => !s.online) && (
+                    {room.seats.some((s, i) => !s.online && !game.players[i]?.out) && (
                       <p className="notice" role="status">
-                        상대의 접속이 끊겼어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
+                        접속이 끊긴 사람이 있어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
                       </p>
                     )}
                   </>

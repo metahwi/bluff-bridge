@@ -1,6 +1,6 @@
 // 봇끼리 대결시켜 규칙 숫자의 밸런스를 본다.
 // 사용: node scripts/sim.ts [판 수]
-import { RULES, awaiting, botAction, createGame, reduce, viewFor } from '../src/index.ts';
+import { DEFAULT_BOT, RULES, awaiting, botAction, createGame, reduce, rulesFor, viewFor } from '../src/index.ts';
 import type { Rules } from '../src/index.ts';
 
 function mulberry32(seed: number): () => number {
@@ -14,12 +14,18 @@ function mulberry32(seed: number): () => number {
   };
 }
 
-function run(label: string, playerCount: number, rules: Rules, games: number): void {
+/**
+ * doubt: 한 사람이 의심하는 정도(1 = 2인 때와 같음). 여럿이 동시에 응답하면 "누가 하겠지" 하고
+ * 각자는 덜 의심하게 되므로, 사람이 많을 때는 낮춘 값으로도 본다.
+ */
+function run(label: string, playerCount: number, rules: Rules, games: number, doubt = 1): void {
   const rng = mulberry32(12345);
+  const cfg = { ...DEFAULT_BOT, challengeBase: DEFAULT_BOT.challengeBase * doubt, challengeSlope: DEFAULT_BOT.challengeSlope * doubt };
   const wins = new Array<number>(playerCount).fill(0);
   let rounds = 0;
   let maxRounds = 0;
   let byElimination = 0;
+  let eaten = 0;
 
   for (let g = 0; g < games; g++) {
     let state = createGame(
@@ -28,27 +34,41 @@ function run(label: string, playerCount: number, rules: Rules, games: number): v
     );
     while (state.phase !== 'over') {
       const who = awaiting(state)!;
-      state = reduce(state, who, botAction(viewFor(state, who), rng), rng).state;
+      state = reduce(state, who, botAction(viewFor(state, who), rng, cfg), rng).state;
     }
     wins[state.winner!]!++;
     rounds += state.round;
     maxRounds = Math.max(maxRounds, state.round);
+    eaten += state.players.reduce((n, p) => n + p.lost, 0);
     if (state.players[state.winner!]!.finished < rules.finishesToWin) byElimination++;
   }
 
   const pct = (n: number) => ((100 * n) / games).toFixed(1) + '%';
   console.log(
-    `${label.padEnd(34)} 평균 ${(rounds / games).toFixed(1)}턴 (최장 ${maxRounds}) | ` +
-      `순서별 승률 ${wins.map(pct).join(' / ')} | 완주 수를 못 채우고 끝난 판 ${pct(byElimination)}`,
+    `${label.padEnd(30)} 평균 ${(rounds / games).toFixed(1).padStart(5)}턴 (최장 ${String(maxRounds).padStart(3)}) | ` +
+      `순서별 승률 ${wins.map(pct).join(' / ')} | 완주 수를 못 채운 판 ${pct(byElimination).padStart(5)} | 먹힌 말 ${(eaten / games).toFixed(1)}`,
   );
 }
 
 const games = Number(process.argv[2] ?? 20000);
 console.log(`${games}판씩 시뮬레이션\n`);
 
-run(`2인 · 현재 규칙 (말 ${RULES.runners}, 완주 ${RULES.finishesToWin})`, 2, RULES, games);
-run('4인 · 현재 규칙', 4, RULES, games);
-for (const runners of [5, 6, 7, 8]) {
-  run(`2인 · 완주 3 · 말 ${runners}개`, 2, { ...RULES, finishesToWin: 3, runners }, games);
+for (const n of [2, 3, 4]) {
+  const r = rulesFor(n);
+  run(`${n}인 · 지금 규칙 (말 ${r.runners}, 완주 ${r.finishesToWin})`, n, r, games);
 }
-run('2인 · 완주 2 · 말 5개 (예전)', 2, { ...RULES, finishesToWin: 2, runners: 5 }, games);
+console.log('');
+for (const n of [3, 4]) {
+  for (const doubt of [1, 0.6]) {
+    for (const [runners, finishesToWin] of [
+      [7, 3],
+      [6, 3],
+      [5, 2],
+      [6, 2],
+      [4, 2],
+    ] as const) {
+      run(`${n}인 · 의심 ${doubt} · 말 ${runners} 완주 ${finishesToWin}`, n, { ...RULES, runners, finishesToWin }, games, doubt);
+    }
+    console.log('');
+  }
+}

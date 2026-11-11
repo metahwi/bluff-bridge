@@ -13,6 +13,7 @@ const action = z.discriminatedUnion('type', [
 /** 브라우저에서 온 메시지 검증. 서버는 이 검사를 통과한 것만 처리한다. */
 export const clientMessage: z.ZodType<ClientMessage> = z.discriminatedUnion('t', [
   z.object({ t: z.literal('ready'), ready: z.boolean() }).strict(),
+  z.object({ t: z.literal('start') }).strict(),
   z.object({ t: z.literal('act'), action }).strict(),
   z.object({ t: z.literal('rematch') }).strict(),
   z.object({ t: z.literal('leave') }).strict(),

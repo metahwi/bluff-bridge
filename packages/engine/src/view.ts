@@ -1,22 +1,29 @@
-import type { GameEvent, GameState, Stats } from './state.ts';
+import type { GameEvent, GameState, Reply, Stats } from './state.ts';
 
 /** 한 플레이어(또는 관전자)가 볼 수 있는 상태. */
-export interface PlayerView extends Omit<GameState, 'stats'> {
+export interface PlayerView extends Omit<GameState, 'stats' | 'replies'> {
   /** 이 뷰의 주인. 관전자는 null. */
   me: number | null;
   /** 판 기록. 뻥 횟수가 들어 있어서 게임이 끝나기 전에는 null이다. */
   stats: Stats[] | null;
+  /** 각자의 응답. 내 것만 내용이 보이고, 남의 것은 골랐는지만('hidden') 보인다. */
+  replies: (Reply | 'hidden' | null)[];
 }
 
 /**
  * 정보 은닉의 유일한 관문. 클라이언트로 나가는 상태는 전부 이 함수를 거친다.
  * 주사위 눈은 굴린 본인에게만 보이고, 누가 뻥을 몇 번 쳤는지는 판이 끝난 뒤에만 보인다.
+ * 남이 믿었는지 의심했는지도 판정 전에는 보이지 않는다(먼저 고른 사람을 보고 따라 하지 못하게).
  */
 export function viewFor(state: GameState, me: number | null): PlayerView {
   const view = structuredClone(state) as unknown as PlayerView;
   view.me = me;
   if (me === null || me !== state.turn) view.die = null;
   if (state.phase !== 'over') view.stats = null;
+  view.replies = state.players.map((_, i) => {
+    const reply = state.replies?.[i] ?? null;
+    return reply && i !== me ? 'hidden' : reply;
+  });
   return view;
 }
 

@@ -193,3 +193,33 @@ main.room.lobby .seats li { padding: 12px 0; font-size: 18px; }
 @keyframes slam { 0% { transform: scale(2.6) rotate(-14deg); } 60% { transform: scale(0.9) rotate(-4deg); } 100% { transform: scale(1) rotate(-7deg); } }
 @keyframes wobble { 0% { transform: translateY(-2px) rotate(-2deg); } 100% { transform: translateY(2px) rotate(2deg); } }
 @keyframes flash { to { opacity: 0; } }
+
+/* ── 3~4명 ── */
+.plateName em { margin-left: auto; flex: none; font-style: normal; font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); white-space: nowrap; }
+.plate.active .plateName em { color: var(--red-dark); font-weight: 700; }
+.plate.out { opacity: 0.55; }
+.seats li.vacant { color: var(--dirt-dark); opacity: 0.6; }
+.seats li.vacant svg { filter: grayscale(1); opacity: 0.5; }
+.panel.form .hint { text-align: center; }
+/* 넓은 화면의 옆 칸: 네 명이어도 기록이 보이게 점수판을 낮게 만든다 */
+.plates.n3 .plate, .plates.n4 .plate { padding: 6px 10px; }
+.plates.n3 .plate dl, .plates.n4 .plate dl { margin-top: 2px; }
+/* 결과 화면: 사람이 많으면 카드를 작게 해서 한 화면에 넣는다 */
+.scores.n3 .scoreCard, .scores.n4 .scoreCard { flex: 1 1 200px; max-width: 280px; padding: 10px; }
+.scores.n3 .total, .scores.n4 .total { font-size: 32px; margin: 4px 0; }
+.scores.n3 .scoreCard dl, .scores.n4 .scoreCard dl { font-size: 13px; }
+.scores.n3 .scoreCard dl div, .scores.n4 .scoreCard dl div { padding: 2px 0; }
+.scores.n3 .scoreCard dt small, .scores.n4 .scoreCard dt small { display: none; }
+@media (max-width: 979px) {
+  .scores.n3 .scoreCard, .scores.n4 .scoreCard { flex: 1 1 150px; }
+  .plates.n3 .plate dt, .plates.n4 .plate dt { font-size: 11px; }
+}.scoreCard .brief { display: none; margin: 0; font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); }
+@media (max-width: 979px) {
+  /* 휴대폰에서 3~4명: 게임판을 낮추고, 결과는 한 사람에 한 줄씩 */
+  main.room:has(.plates.n3, .plates.n4) .board .stage { aspect-ratio: 4 / 3; }
+  .scores.n3, .scores.n4 { gap: 6px; }
+  .scores.n3 .scoreCard, .scores.n4 .scoreCard { flex: 1 1 100%; max-width: none; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 0 8px; padding: 6px 10px; }
+  .scores.n3 .scoreCard dl, .scores.n4 .scoreCard dl { display: none; }
+  .scores.n3 .scoreCard .brief, .scores.n4 .scoreCard .brief { display: block; grid-column: 1 / -1; }
+  .scores.n3 .total, .scores.n4 .total { margin: 0; font-size: 26px; }
+}

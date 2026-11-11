@@ -65,7 +65,7 @@ export function Result({
         </p>
       )}
 
-      <div className="scores">
+      <div className={'scores n' + game.players.length}>
         {rows.map(({ p, i, stats, line }) => (
           <section key={i} className={'scoreCard' + (i === winner ? ' winner' : '')}>
             <header>
@@ -77,6 +77,10 @@ export function Result({
             <p className="total">
               <CountUp to={line.total} delay={300 + i * 250} />
               <small>점</small>
+            </p>
+            {/* 좁은 화면에서 여럿일 때는 아래 표 대신 이 한 줄만 보인다 */}
+            <p className="brief">
+              완주 {p.finished} · 안 들킨 뻥 {stats.bluffsPassed} · 맞힌 의심 {stats.challengesWon} · 먹힘 {p.lost}
             </p>
             <dl>
               <div>
