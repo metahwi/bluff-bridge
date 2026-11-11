@@ -193,7 +193,35 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
   const controls = useRef<StageControls | null>(null);
   const settleTimer = useRef<ReturnType<typeof setTimeout>>(undefined);
 
-  // 새 상태(seq)가 올 때마다 한 번만 기록과 연출을 처리한다.
+  /** 연출이 시작되기 직전의 게임 상태(점수판용)와, 직전 렌더링에서 그렸던 게임 상태. */
+  const platesBefore = useRef<PlayerView | null>(null);
+  const prevGame = useRef<PlayerView | null>(null);
+
+  // 추락 연출은 '새 상태를 그리기 전에' 시작해야 한다. 그래야 게임판이 말이 먹히기 전의 자리
+  // (다리 위 몇 번째 칸이었는지)를 기준으로 장면을 만든다. 그래서 다음 화면을 그릴 때까지 기다리는
+  // useEffect가 아니라, 새 상태를 받은 바로 그 렌더링에서 연출을 켠다.
+  const [cueSeq, setCueSeq] = useState<number | null>(null);
+  if (room && room.seq !== cueSeq) {
+    setCueSeq(room.seq);
+    const hit = cueSeq === null ? undefined : room.events.find((e): e is Challenged => e.type === 'challenged');
+    if (hit && room.game) {
+      platesBefore.current = prevGame.current;
+      setCue({
+        id: room.seq,
+        fallen: hit.fallen,
+        other: hit.fallen === hit.roller ? hit.challenger : hit.roller,
+        claim: hit.claim,
+        die: hit.die,
+        truth: hit.truth,
+        victimName: room.game.players[hit.fallen]?.name ?? '?',
+      });
+    }
+  }
+
+  // 새 상태를 받아들인 뒤의 렌더링에서만 '직전 상태'를 갱신한다(위 블록이 옛 값을 읽을 수 있게).
+  if (room && room.seq === cueSeq) prevGame.current = room.game;
+
+  // 새 상태(seq)가 올 때마다 한 번만 기록을 처리한다.
   useEffect(() => {
     if (!room || room.seq === seenSeq.current) return;
     const first = seenSeq.current === -1;
@@ -202,18 +230,6 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     if (!game || first) return;
     const lines = room.events.flatMap((e) => describe(e, game) ?? []);
     if (lines.length) setLog((l) => [...lines.reverse(), ...l].slice(0, 40));
-    const hit = room.events.find((e): e is Challenged => e.type === 'challenged');
-    if (hit) {
-      setCue({
-        id: room.seq,
-        fallen: hit.fallen,
-        other: hit.fallen === hit.roller ? hit.challenger : hit.roller,
-        claim: hit.claim,
-        die: hit.die,
-        truth: hit.truth,
-        victimName: game.players[hit.fallen]?.name ?? '?',
-      });
-    }
     // 방금 주사위가 던져졌으면 멈출 때까지 잠깐 기다린다.
     if (room.events.some((e) => e.type === 'rolled')) {
       setSettled(false);
@@ -365,7 +381,8 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         </div>
 
         <aside className="side">
-          {inGame && <Plates game={game} me={room.me} />}
+          {/* 연출이 끝나기 전에 점수판이 먼저 바뀌어 결말이 드러나지 않게, 연출 중에는 직전 점수판을 보여 준다. */}
+          {inGame && <Plates game={cue && platesBefore.current ? platesBefore.current : game} me={room.me} />}
 
           {room.status === 'lobby' && (
             <section className="panel">

@@ -25,7 +25,7 @@ const BASE: StageState = {
 };
 
 /** 연출별로, 먹히기 직전에 두 말이 서 있던 칸. 먹히는 쪽은 항상 0번(주황). */
-const SCENES: Record<string, [number, number]> = { chomp: [4, 8], near: [4, 5], kick: [0, 1], rope: [0, 6] };
+const SCENES: Record<string, [number, number]> = { left: [1, 6], chomp: [4, 8], right: [8, 2], near: [4, 5], kick: [0, 1], rope: [0, 6] };
 
 /** 결과 화면에 넣을 가짜 판. */
 function finishedGame() {
@@ -107,7 +107,7 @@ export function StageDemo({ mode }: { mode: string }) {
             </button>
             {Object.keys(SCENES).map((name) => (
               <button key={name} className="ghost small" onClick={() => scene(name)}>
-                {{ chomp: '널빤지', near: '널빤지(상대가 옆 칸)', kick: '걷어차기', rope: '올가미' }[name]}
+                {{ left: '1번 칸', chomp: '4번 칸', right: '8번 칸', near: '상대가 옆 칸', kick: '걷어차기', rope: '올가미' }[name]}
               </button>
             ))}
           </div>
