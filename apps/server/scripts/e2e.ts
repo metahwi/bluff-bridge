@@ -17,6 +17,8 @@ interface Client {
   ws: WebSocket;
   room: RoomView | null;
   errors: string[];
+  /** 받은 채팅(보낸 사람 이름: 글 또는 #번호). */
+  chats: string[];
   closed: number | null;
   onState: (room: RoomView) => void;
 }
@@ -50,7 +52,7 @@ function connect(code: string, name: string, cookie: string): Promise<Client> {
   return new Promise((resolve, reject) => {
     // Node의 WebSocket은 브라우저와 달리 헤더를 직접 넣을 수 있다.
     const ws = new WebSocket(`${wsBase}/ws/room/${code}`, { headers: { Cookie: cookie, Origin: base } } as never);
-    const c: Client = { name, ws, room: null, errors: [], closed: null, onState: () => {} };
+    const c: Client = { name, ws, room: null, errors: [], chats: [], closed: null, onState: () => {} };
     ws.onopen = () => resolve(c);
     ws.onerror = () => reject(new Error(`${name}: 접속 실패`));
     ws.onclose = (e) => (c.closed = e.code);
@@ -58,6 +60,7 @@ function connect(code: string, name: string, cookie: string): Promise<Client> {
       const raw = String(e.data);
       const msg = JSON.parse(raw) as ServerMessage;
       if (msg.t === 'error') return void c.errors.push(msg.message);
+      if (msg.t === 'chat') return void c.chats.push(`${msg.name}: ${msg.text ?? '#' + msg.preset}`);
       const { game, me, events } = msg.room;
       // 누가 뻥을 몇 번 쳤는지는 판이 끝나기 전에는 누구에게도 가지 않는다.
       if (game && game.phase !== 'over') {
@@ -134,6 +137,17 @@ const fifth = await connect(code, '이', await guest('이'));
 await until(() => fifth.closed !== null, '다섯 번째 입장 거절');
 check(fifth.closed === 4003 && fifth.errors.length === 1, `다섯 번째 입장이 거절되지 않음 (close=${fifth.closed})`);
 const all = [a, b, c, d];
+
+// 2-1. 채팅: 방에 있는 모두에게 전해지고, 욕설·전화번호는 가려진다. 연달아 보내면 뒤의 것은 버린다.
+send(b, { t: 'chat', text: '안녕  시 발 010-1234-5678' });
+send(b, { t: 'chat', text: '도배' });
+await until(() => all.every((x) => x.chats.length === 1), '채팅 전달');
+check(a.chats[0] === '비: 안녕 ♥♥ (번호)', `채팅 글이 다듬어지지 않음: ${a.chats[0]}`);
+await sleep(900);
+send(c, { t: 'chat', preset: 1 });
+await until(() => all.every((x) => x.chats.length === 2), '정해진 말 전달');
+check(d.chats[1] === '씨: #1', `정해진 말이 다름: ${d.chats[1]}`);
+check(fifth.chats.length === 0, '방에 없는 사람에게 채팅이 전달됨');
 
 // 3. 방장(첫 번째로 들어온 사람)만, 나머지가 모두 준비한 뒤에 시작할 수 있다
 send(b, { t: 'ready', ready: true });
@@ -260,6 +274,13 @@ if (matchedX?.t === 'matched') {
   const y = await connect(matchedX.code, '와이', cookieY);
   await until(() => x.room?.status === 'playing' && y.room?.status === 'playing', '빠른 매칭 자동 시작');
   check(x.room!.auto === true, '빠른 매칭 방 표시가 없음');
+  // 빠른 매칭 방에서는 직접 쓴 글은 거절되고 정해진 말만 전해진다
+  const errorsBefore = x.errors.length;
+  send(x, { t: 'chat', text: '어디 살아?' });
+  await until(() => x.errors.length === errorsBefore + 1, '빠른 매칭에서 자유 채팅 거절');
+  send(x, { t: 'chat', preset: 0 });
+  await until(() => y.chats.length === 1, '빠른 매칭에서 정해진 말 전달');
+  check(y.chats[0] === '엑스: #0', `빠른 매칭 채팅이 다름: ${y.chats}`);
   console.log(`빠른 매칭: 방 ${matchedX.code}에서 자동 시작`);
   x.ws.close();
   y.ws.close();

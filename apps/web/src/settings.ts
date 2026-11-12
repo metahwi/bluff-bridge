@@ -4,6 +4,7 @@ import { sound } from './sound.ts';
 
 const GORE_KEY = 'hama:gore';
 const WORK_KEY = 'hama:work';
+const CHAT_KEY = 'hama:chat';
 const listeners = new Set<() => void>();
 
 function read(key: string, fallback: boolean): boolean {
@@ -25,6 +26,7 @@ function write(key: string, on: boolean): void {
 
 let gore = read(GORE_KEY, true);
 let work = read(WORK_KEY, false);
+let chat = read(CHAT_KEY, true);
 
 /** 업무 모드를 문서 전체에 알린다: CSS가 이 표시를 보고 화면을 바꾸고, 소리는 꺼진다. */
 function applyWork(): void {
@@ -70,6 +72,15 @@ export const settings = {
     applyWork();
     for (const fn of listeners) fn();
   },
+  /** 채팅을 보여 줄지. 끄면 남의 글도 보이지 않고 나도 보낼 수 없다. */
+  get chat(): boolean {
+    return chat;
+  },
+  setChat(on: boolean): void {
+    chat = on;
+    write(CHAT_KEY, on);
+    for (const fn of listeners) fn();
+  },
   subscribe(fn: () => void): () => void {
     listeners.add(fn);
     return () => listeners.delete(fn);
@@ -78,6 +89,10 @@ export const settings = {
 
 export function useGore(): boolean {
   return useSyncExternalStore(settings.subscribe, () => settings.gore);
+}
+
+export function useChat(): boolean {
+  return useSyncExternalStore(settings.subscribe, () => settings.chat);
 }
 
 export function useWork(): boolean {

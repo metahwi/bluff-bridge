@@ -173,3 +173,15 @@
 @media (max-width: 720px) {
   .sheet.line .review, .sheet.line thead th:last-child { display: none; }
 }
+/* 메모(채팅) */
+[data-mode='work'] .chat.memo { max-width: 900px; margin: 0 0 24px 36px; padding: 8px 10px; background: #fff; border: 1px solid var(--wb-line); }
+[data-mode='work'] .chat.memo h3 { font-size: 12px; color: var(--wb-muted); font-weight: 700; }
+[data-mode='work'] .chat.memo .chatList { font-size: 13px; height: 6em; }
+[data-mode='work'] .chat.memo .chatList p b { font-size: 12px; }
+[data-mode='work'] .chat.memo .chatList p.mine span { color: var(--wb-muted); }
+[data-mode='work'] .chat.memo .chatPresets button { min-height: 24px; box-shadow: none; }
+[data-mode='work'] .chat.memo .chatInput input { font-size: 13px; min-height: 28px; }
+@media (max-width: 720px) {
+  [data-mode='work'] .chat.memo { margin-left: 6px; margin-right: 6px; }
+  [data-mode='work'] .chat.memo .chatInput input { font-size: 16px; }
+}

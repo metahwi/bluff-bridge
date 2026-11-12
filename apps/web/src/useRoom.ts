@@ -3,6 +3,17 @@ import type { ClientMessage, RoomView, ServerMessage } from '@bluff-bridge/proto
 
 export type Connection = 'connecting' | 'open' | 'lost' | 'closed';
 
+/** 화면에 보여 줄 채팅 한 줄. */
+export interface ChatLine {
+  id: number;
+  /** 보낸 사람의 자리 번호(말 색을 정한다)와 이름. */
+  from: number;
+  name: string;
+  text?: string;
+  /** 정해진 말의 번호. 받는 화면이 자기 모드에 맞는 글로 보여 준다. */
+  preset?: number;
+}
+
 export interface RoomState {
   room: RoomView | null;
   /** 현재 행동의 마감 시각(이 브라우저 시계 기준). */
@@ -12,6 +23,8 @@ export interface RoomState {
   error: string;
   /** 더 진행할 수 없는 이유(방 없음, 가득 참 등). */
   fatal: string;
+  /** 이 방에 들어온 뒤로 받은 채팅(오래된 것부터). 서버에는 남지 않는다. */
+  chat: ChatLine[];
   send: (msg: ClientMessage) => void;
 }
 
@@ -22,6 +35,8 @@ export function useRoom(code: string, userId: string): RoomState {
   const [conn, setConn] = useState<Connection>('connecting');
   const [error, setError] = useState('');
   const [fatal, setFatal] = useState('');
+  const [chat, setChat] = useState<ChatLine[]>([]);
+  const chatId = useRef(0);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => {
@@ -46,6 +61,9 @@ export function useRoom(code: string, userId: string): RoomState {
         if (msg.t === 'state') {
           setRoom(msg.room);
           setDeadline(msg.room.remainingMs === null ? null : Date.now() + msg.room.remainingMs);
+        } else if (msg.t === 'chat') {
+          const line: ChatLine = { id: ++chatId.current, from: msg.from, name: msg.name, text: msg.text, preset: msg.preset };
+          setChat((c) => [...c, line].slice(-60));
         } else if (msg.fatal) {
           setFatal(msg.message);
         } else {
@@ -82,5 +100,5 @@ export function useRoom(code: string, userId: string): RoomState {
     if (ws?.readyState === WebSocket.OPEN) ws.send(JSON.stringify(msg));
   }, []);
 
-  return { room, deadline, conn, error, fatal, send };
+  return { room, deadline, conn, error, fatal, chat, send };
 }

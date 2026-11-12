@@ -56,6 +56,10 @@ for (const g of guests) {
   }
   await button(g, '준비 완료').click();
 }
+// 채팅: 방장이 글을 쓰고, 다른 사람이 정해진 말을 누른다
+await host.page.getByLabel('채팅 입력').fill('다 왔어? 시작한다!');
+await host.page.keyboard.press('Enter');
+await guests[0].page.getByRole('button', { name: 'ㅋㅋㅋ', exact: true }).click();
 await host.page.waitForTimeout(600);
 await shot(host, 'lobby-full');
 const worker = people.find((p) => p.work);

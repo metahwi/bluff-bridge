@@ -7,6 +7,8 @@ import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { ClientMessage, RoomView } from '@bluff-bridge/protocol/types';
 import type { ChompCue } from '../stage/StageView.tsx';
+import { Chat } from '../Chat.tsx';
+import type { ChatLine } from '../useRoom.ts';
 import { WorkChrome, columnName } from './WorkChrome.tsx';
 
 /** 결재 라인 위의 안건 한 건. 좁은 화면에서는 네모 하나로 줄여 보인다. */
@@ -71,6 +73,8 @@ export interface WorkRoomProps {
   error: string;
   log: string[];
   cue: ChompCue | null;
+  /** 메모(채팅). 설정에서 껐으면 null. */
+  chat: ChatLine[] | null;
   /** 감사 결과를 알리는 동안 표에 보여 줄, 반려되기 직전의 상태. */
   before: PlayerView | null;
   copied: boolean;
@@ -80,7 +84,7 @@ export interface WorkRoomProps {
   onLeave: () => void;
 }
 
-export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, copied, send, onCueDone, onCopy, onLeave }: WorkRoomProps) {
+export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, before, copied, send, onCueDone, onCopy, onLeave }: WorkRoomProps) {
   const game = room.game;
   const me = room.me;
   const seat = room.seats[me];
@@ -346,6 +350,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
           </table>
         </>
       )}
+      {chat && <Chat lines={chat} me={me} presetsOnly={room.auto} work send={send} />}
     </WorkChrome>
   );
 }

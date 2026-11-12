@@ -223,3 +223,32 @@ main.room.lobby .seats li { padding: 12px 0; font-size: 18px; }
   .scores.n3 .scoreCard .brief, .scores.n4 .scoreCard .brief { display: block; grid-column: 1 / -1; }
   .scores.n3 .total, .scores.n4 .total { margin: 0; font-size: 26px; }
 }
+/* ── 채팅 ── */
+.chat { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px; background: rgb(246 231 189 / 0.95); border: 3px solid var(--ink); order: 5; }
+.chat h3 { margin: 0; font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); }
+.chatList { display: flex; flex-direction: column; gap: 2px; height: 6.5em; overflow-y: auto; font-size: 14px; overscroll-behavior: contain; }
+.chatList p { display: flex; align-items: baseline; gap: 5px; min-width: 0; }
+.chatList p svg { flex: none; align-self: center; }
+.chatList p b { flex: none; max-width: 40%; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 12px; font-family: Galmuri11, sans-serif; }
+.chatList p span { min-width: 0; overflow-wrap: anywhere; }
+.chatList p.mine span { color: var(--dirt-dark); }
+.chatList .empty { color: var(--dirt-dark); font-size: 12px; }
+.chat .who.p0 { color: #b8430f; } .chat .who.p1 { color: #1d5fd0; } .chat .who.p2 { color: #7b2fc4; } .chat .who.p3 { color: #15803d; }
+.chatPresets { display: flex; gap: 4px; overflow-x: auto; padding-bottom: 5px; scrollbar-width: thin; }
+.chatPresets button { flex: none; min-height: 30px; padding: 2px 8px; white-space: nowrap; box-shadow: inset -2px -2px 0 var(--paper-dark), 0 2px 0 var(--ink); }
+.chatInput { display: flex; gap: 6px; }
+.chatInput input { flex: 1; min-width: 0; min-height: 36px; padding: 4px 8px; font-size: 16px; }
+.chatInput button { flex: none; }
+main.room.lobby .side > .chat { width: min(640px, 100%); }
+@media (min-width: 980px) {
+  .side .log { min-height: 60px; }
+  .side .chat { flex: none; }
+}@media (min-width: 980px) {
+  /* 옆 칸에 점수판·행동·기록·채팅이 모두 들어가게: 셋 이상이면 점수판을 두 줄로 나누고 칸을 조금 넓힌다 */
+  main.room:not(.lobby):has(.plates.n3, .plates.n4) { grid-template-columns: minmax(0, 1fr) 380px; }
+  .side .plates.n3, .side .plates.n4 { grid-template-columns: 1fr 1fr; }
+  .side .plates.n3 .plate dl, .side .plates.n4 .plate dl { gap: 2px 8px; }
+  .side { overflow-y: auto; scrollbar-width: thin; }
+  .side .chatList { height: 4.4em; }
+  .side .panel.actions { padding: 12px 14px; }
+}

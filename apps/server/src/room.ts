@@ -10,9 +10,10 @@ import {
   viewFor,
 } from '@bluff-bridge/engine';
 import type { GameEvent, GameState } from '@bluff-bridge/engine';
-import { GRACE_MS, MAX_SEATS, MIN_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
+import { CHAT_GAP_MS, CHAT_PRESETS, GRACE_MS, MAX_SEATS, MIN_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
 import type { RoomView, ServerMessage } from '@bluff-bridge/protocol';
 import type { Env } from './index.ts';
+import { cleanChat } from './chat.ts';
 import { saveMatch } from './records.ts';
 import type { MatchRecord } from './records.ts';
 
@@ -68,6 +69,8 @@ export class GameRoom extends DurableObject<Env> {
   private room: Room | null | undefined;
   /** 방금 끝난 판의 전적. commit에서 DB에 쓴다. */
   private pendingRecord: MatchRecord | null = null;
+  /** 사람마다 마지막으로 채팅을 보낸 시각(도배 방지). 저장하지 않는다. */
+  private lastChat = new Map<string, number>();
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -330,6 +333,29 @@ export class GameRoom extends DurableObject<Env> {
         if (!room.seats.every((s, i) => i === 0 || s.ready)) return this.send(ws, { t: 'error', message: '아직 준비하지 않은 사람이 있어요.' });
         this.start(room);
         break;
+
+      case 'chat': {
+        // 채팅은 방 상태를 바꾸지 않는다: 저장하지 않고 지금 접속한 사람에게만 전한다.
+        const now = Date.now();
+        if (now - (this.lastChat.get(att.pid) ?? 0) < CHAT_GAP_MS) return;
+        const out: ServerMessage = { t: 'chat', from: idx, name: seat.name };
+        if (msg.preset !== undefined) {
+          if (msg.preset >= CHAT_PRESETS.length) return;
+          out.preset = msg.preset;
+        } else {
+          // 빠른 매칭은 모르는 사람과 만나는 방이라 정해진 말만 주고받는다.
+          if (room.auto) return this.send(ws, { t: 'error', message: '빠른 매칭에서는 정해진 말만 보낼 수 있어요.' });
+          const text = cleanChat(msg.text ?? '');
+          if (!text) return;
+          out.text = text;
+        }
+        this.lastChat.set(att.pid, now);
+        for (const peer of this.ctx.getWebSockets()) {
+          const who = peer.deserializeAttachment() as Attachment | null;
+          if (who && room.seats.some((s) => s.pid === who.pid)) this.send(peer, out);
+        }
+        return;
+      }
 
       case 'rematch':
         if (room.status !== 'over') return;

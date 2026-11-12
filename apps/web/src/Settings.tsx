@@ -1,6 +1,6 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Sprite } from './pixel.tsx';
-import { settings, useGore, useWork } from './settings.ts';
+import { settings, useChat, useGore, useWork } from './settings.ts';
 import { sound } from './sound.ts';
 
 const GEAR = ['...ooo...', '.o.ooo.o.', '.ooooooo.', 'ooo...ooo', 'ooo...ooo', 'ooo...ooo', '.ooooooo.', '.o.ooo.o.', '...ooo...'] as const;
@@ -35,6 +35,7 @@ export function SettingsButton({ floating = false }: { floating?: boolean }) {
   const [enabled, volume, musicOn] = snapshot.split('|');
   const gore = useGore();
   const work = useWork();
+  const chat = useChat();
 
   // 바깥을 누르거나 Esc를 누르면 닫는다.
   useEffect(() => {
@@ -63,6 +64,7 @@ export function SettingsButton({ floating = false }: { floating?: boolean }) {
             on={work}
             onChange={(on) => settings.setWork(on)}
           />
+          <Toggle label={work ? '메모' : '채팅'} hint={work ? '끄면 다른 사람의 메모가 보이지 않습니다.' : '끄면 다른 사람의 글이 보이지 않아요.'} on={chat} onChange={(on) => settings.setChat(on)} />
           {!work && (
             <>
               <Toggle label="소리" on={enabled === 'true'} onChange={(on) => sound.setEnabled(on)} />

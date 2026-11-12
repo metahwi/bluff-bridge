@@ -14,7 +14,8 @@ import type { ChompCue, StageControls } from './stage/StageView.tsx';
 import type { StageState } from './stage/Stage.ts';
 import type { DiceState } from './stage/dice.ts';
 import { useRoom } from './useRoom.ts';
-import { settings, useWork } from './settings.ts';
+import { settings, useChat, useWork } from './settings.ts';
+import { Chat } from './Chat.tsx';
 import { WorkRoom, describeWork } from './work/WorkRoom.tsx';
 import { WorkChrome } from './work/WorkChrome.tsx';
 
@@ -221,7 +222,8 @@ function Actions({
 }
 
 export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: () => void }) {
-  const { room, deadline, conn, error, fatal, send } = useRoom(code, userId);
+  const { room, deadline, conn, error, fatal, chat, send } = useRoom(code, userId);
+  const chatOn = useChat();
   /** 무대에서 재생 중인 추락 연출. 끝날 때까지 조작을 막는다. */
   const [cue, setCue] = useState<ChompCue | null>(null);
   /** 기록은 게임 말투와 업무 말투 두 가지로 함께 쌓아 둔다(도중에 모드를 바꿔도 이어지게). */
@@ -401,6 +403,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             conn={conn}
             error={error}
             log={log.map((l) => l.work)}
+            chat={chatOn ? chat : null}
             cue={cue}
             before={platesBefore.current}
             copied={copied}
@@ -556,6 +559,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
               </section>
             </>
           )}
+          {chatOn && <Chat lines={chat} me={room.me} presetsOnly={room.auto} send={send} />}
         </aside>
       </main>
 

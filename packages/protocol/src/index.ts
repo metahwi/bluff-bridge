@@ -16,5 +16,6 @@ export const clientMessage: z.ZodType<ClientMessage> = z.discriminatedUnion('t',
   z.object({ t: z.literal('start') }).strict(),
   z.object({ t: z.literal('act'), action }).strict(),
   z.object({ t: z.literal('rematch') }).strict(),
+  z.object({ t: z.literal('chat'), text: z.string().min(1).max(200).optional(), preset: z.number().int().min(0).max(31).optional() }).strict(),
   z.object({ t: z.literal('leave') }).strict(),
 ]);

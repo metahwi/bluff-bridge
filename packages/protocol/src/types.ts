@@ -10,6 +10,16 @@ export const GRACE_MS = 60_000;
 export const MAX_SEATS = 4;
 export const MIN_SEATS = 2;
 export const NAME_MAX = 16;
+/** 채팅 한 줄의 최대 글자 수. */
+export const CHAT_MAX = 60;
+/** 채팅을 연달아 보낼 때 지켜야 하는 간격. */
+export const CHAT_GAP_MS = 800;
+/**
+ * 눌러서 바로 보내는 말. 번호로 주고받고, 받는 쪽 화면이 자기 모드(게임/업무)에 맞는 글로 보여 준다.
+ * 빠른 매칭 방(모르는 사람과 만나는 방)에서는 이 말들만 보낼 수 있다.
+ */
+export const CHAT_PRESETS = ['안녕!', 'ㅋㅋㅋ', '뻥이지?', '진짜야!', '빨리빨리~', '아깝다!', '잘한다!', '한 판 더?'] as const;
+export const CHAT_PRESETS_WORK = ['안녕하세요', 'ㅎㅎ', '근거 자료 있나요?', '사실입니다', '빠른 회신 부탁드립니다', '아쉽네요', '수고하셨습니다', '한 건 더 하시죠'] as const;
 export const ROOM_CODE = /^[A-HJKMNP-Z2-9]{6}$/;
 
 export type ClientMessage =
@@ -18,6 +28,8 @@ export type ClientMessage =
   | { t: 'start' }
   | { t: 'act'; action: Action }
   | { t: 'rematch' }
+  /** 채팅. text(직접 쓴 글)와 preset(정해진 말의 번호) 중 하나를 보낸다. */
+  | { t: 'chat'; text?: string; preset?: number }
   | { t: 'leave' };
 
 export interface SeatView {
@@ -52,4 +64,6 @@ export type MatchMessage =
 
 export type ServerMessage =
   | { t: 'state'; room: RoomView }
+  /** 누군가 보낸 채팅. 서버에 저장하지 않고 지금 방에 있는 사람에게만 전한다. */
+  | { t: 'chat'; from: number; name: string; text?: string; preset?: number }
   | { t: 'error'; message: string; fatal?: boolean };
