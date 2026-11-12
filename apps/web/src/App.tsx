@@ -262,6 +262,7 @@ export function App() {
           <li>
             말 {RULES.runners}개 중 {RULES.finishesToWin}개를 먼저 건너보내면 이겨요. 3~4명이 하면 말 {MULTI.runners}개 중 {MULTI.finishesToWin}개예요.
           </li>
+          <li>말을 다 써도 판은 끝나지 않아요. 말이 없는 사람은 의심만 할 수 있고, 틀리면 완주한 말을 잃어요. 모두 말이 떨어지면 완주가 많은 사람이 이겨요.</li>
         </ol>
       </section>
 

@@ -12,8 +12,13 @@ export interface Player {
   reserve: number;
   finished: number;
   lost: number;
-  /** 말을 모두 잃어 탈락. */
+  /**
+   * 굴릴 말이 하나도 남지 않았다(대기 말도, 다리 위 말도 없음). 더는 주사위를 굴리지 못하지만
+   * 판은 계속되고, 완주한 말이 있으면 남의 선언을 의심할 수는 있다. 의심이 틀리면 완주한 말을 잃는다.
+   */
   out: boolean;
+  /** 기권해서 판을 떠났다(나가기·접속 끊김). 아무것도 하지 못한다. */
+  gone?: boolean;
 }
 
 /** 한 사람의 판 기록. 뻥 횟수는 게임 중에는 비밀이고, 끝난 뒤에만 공개한다(viewFor 참고). */
@@ -93,6 +98,8 @@ export type GameEvent =
       claim: number;
       truth: boolean;
       fallen: number;
+      /** 떨어진 사람에게 굴릴 말이 없어서, 이미 완주한 말을 대신 잃었다. */
+      revoked?: boolean;
     }
   | { type: 'finished'; player: number }
   | { type: 'out'; player: number }
@@ -137,13 +144,16 @@ export function createGame(names: string[], rules: Rules = RULES, firstTurn = 0)
 /** 차례 계산에 필요한 부분. 서버의 전체 상태와 브라우저가 받는 뷰 둘 다 넣을 수 있다. */
 export type Table = Pick<GameState, 'players' | 'turn' | 'phase'> & { replies?: (string | null)[] };
 
-/** 이번 선언에 응답하는 사람들: 굴린 사람 다음부터 차례 순서대로, 말이 남은 사람만. */
+/** 의심이 틀렸을 때 잃을 말이 있는 사람만 응답할 수 있다: 굴릴 말이 남았거나, 완주한 말이 있거나. */
+export const canRespond = (p: Player): boolean => !p.gone && (!p.out || p.finished > 0);
+
+/** 이번 선언에 응답하는 사람들: 굴린 사람 다음부터 차례 순서대로. */
 export function responders(state: Table): number[] {
   const n = state.players.length;
   const list: number[] = [];
   for (let i = 1; i < n; i++) {
     const idx = (state.turn + i) % n;
-    if (!state.players[idx]!.out) list.push(idx);
+    if (canRespond(state.players[idx]!)) list.push(idx);
   }
   return list;
 }

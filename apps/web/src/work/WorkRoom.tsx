@@ -2,7 +2,7 @@
 //   말 = 안건, 다리 = 결재 라인(1~N단계), 완주 = 최종 승인, 먹힘 = 반려,
 //   주사위 = =RANDBETWEEN(), 꽝 = #N/A, 선언 = 보고, 믿기 = 승인, 의심 = 감사 요청, 뻥 = 허위 보고.
 import { useEffect, useState } from 'react';
-import { BLANK, POINTS, emptyStats, pending, scoreOf } from '@bluff-bridge/engine';
+import { BLANK, POINTS, canRespond, emptyStats, pending, scoreOf } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { ClientMessage, RoomView } from '@bluff-bridge/protocol/types';
@@ -29,12 +29,12 @@ export function describeWork(e: GameEvent, g: PlayerView): string | null {
       return `${g.players.length > 2 ? '전원' : n(e.player)} 승인 → ${n(e.roller)} 안건 ${e.steps}단계 진행`;
     case 'challenged':
       return e.truth
-        ? `${n(e.challenger)} 감사 요청 → 정상 보고(실제 값 ${value(e.die)}). ${n(e.challenger)} 안건 반려`
+        ? `${n(e.challenger)} 감사 요청 → 정상 보고(실제 값 ${value(e.die)}). ${n(e.challenger)} ${e.revoked ? '최종 승인 1건 취소' : '안건 반려'}`
         : `${n(e.challenger)} 감사 요청 → 허위 보고 적발(실제 값 ${value(e.die)}). ${n(e.roller)} 안건 반려`;
     case 'finished':
       return `${n(e.player)} 안건 최종 승인`;
     case 'out':
-      return `${n(e.player)} 잔여 안건 없음`;
+      return `${n(e.player)} 잔여 안건 없음 (감사 요청만 가능)`;
     case 'forfeit':
       return `${n(e.player)} 자리 비움`;
     default:
@@ -44,7 +44,8 @@ export function describeWork(e: GameEvent, g: PlayerView): string | null {
 
 /** 결재 라인 표의 '검토' 칸: 이번 보고에 대해 각자 무엇을 하는 중인지. */
 function reviewStatus(game: PlayerView, i: number): string {
-  if (game.players[i]?.out) return '종료';
+  const p = game.players[i];
+  if (p?.gone || (p?.out && !canRespond(p))) return '종료';
   if (game.phase === 'over') return '';
   if (game.turn === i) return game.phase === 'respond' ? '보고' : '작성';
   if (game.phase !== 'respond') return '';
@@ -268,7 +269,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
           <div className="wbTask" aria-live="polite">
             {cue ? (
               <p className={'audit ' + (cue.truth ? 'clean' : 'fraud')}>
-                감사 결과: {cue.truth ? '정상 보고' : '허위 보고 적발'} (보고 {cue.claim} / 실제 {value(cue.die)}) → {cue.victimName} 안건 반려
+                감사 결과: {cue.truth ? '정상 보고' : '허위 보고 적발'} (보고 {cue.claim} / 실제 {value(cue.die)}) → {cue.victimName} {cue.revoked ? '최종 승인 1건 취소' : '안건 반려'}
               </p>
             ) : room.status === 'over' ? (
               <Summary game={game} me={me} waiting={!!seat?.rematch} onRematch={() => send({ t: 'rematch' })} onLeave={onLeave} />
@@ -299,8 +300,10 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, before, 
               ) : (
                 <p>{name(game.turn)} 보고서 작성 중…</p>
               )
-            ) : mine?.out ? (
+            ) : mine?.out && !canRespond(mine) ? (
               <p>잔여 안건이 없습니다. 열람만 가능합니다.</p>
+            ) : mine?.out && game.phase !== 'respond' ? (
+              <p>잔여 안건이 없어 감사 요청만 할 수 있습니다. 감사가 빗나가면 최종 승인된 안건 1건이 취소됩니다. ({name(game.turn)} 작성 중…)</p>
             ) : game.turn !== me && !game.replies?.[me] ? (
               <p className="choices">
                 {name(game.turn)}의 보고: <b>{game.claim}단계 진행</b>

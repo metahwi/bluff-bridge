@@ -16,6 +16,8 @@ export interface ChompCue {
   die: number;
   truth: boolean;
   victimName: string;
+  /** 굴릴 말이 없어서 완주한 말을 대신 잃었다. */
+  revoked?: boolean;
 }
 
 export interface StageControls {
@@ -158,7 +160,7 @@ export function StageView({
           {phase === 'burp' && <span className="sfxBurp">꺼억</span>}
           {eaten && (
             <p className="epitaph">
-              {cue.victimName}의 말{gore ? '이 하마에게 먹혔어요.' : '을 하마가 꿀꺽 삼켰어요.'}
+              {cue.victimName}의 {cue.revoked ? '완주한 말' : '말'}{gore ? '이 하마에게 먹혔어요.' : '을 하마가 꿀꺽 삼켰어요.'}
             </p>
           )}
         </>

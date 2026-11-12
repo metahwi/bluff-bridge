@@ -206,8 +206,7 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private forfeitSeat(room: Room, idx: number): void {
-    // 이미 말을 다 잃고 구경하던 사람이 나가는 것은 판에 영향이 없다.
-    if (!room.game!.players[idx]!.out) this.applyResult(room, forfeit(room.game!, idx));
+    if (!room.game!.players[idx]!.gone) this.applyResult(room, forfeit(room.game!, idx));
     // 자리는 판이 끝나고 결과 화면을 볼 시간이 지난 뒤에 정리한다.
     room.seats[idx]!.left = true;
     room.seats[idx]!.offlineSince ??= Date.now();

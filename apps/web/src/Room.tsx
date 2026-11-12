@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import type { RefObject } from 'react';
-import { BLANK, RULES, pending, responders } from '@bluff-bridge/engine';
+import { BLANK, RULES, canRespond, pending, responders } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { RoomView } from '@bluff-bridge/protocol/types';
@@ -45,12 +45,12 @@ function describe(e: GameEvent, g: PlayerView): string | null {
       return g.players.length > 2 ? `모두 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.` : `${n(e.player)}가 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.`;
     case 'challenged':
       return e.truth
-        ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 말이 하마 밥이 됐어요.`
+        ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 ${e.revoked ? '완주한 말이 끌려와' : '말이'} 하마 밥이 됐어요.`
         : `${n(e.challenger)}의 의심 성공! 실제 눈은 ${face(e.die)}. ${n(e.roller)}의 말이 하마 밥이 됐어요.`;
     case 'finished':
       return `${n(e.player)} 완주!`;
     case 'out':
-      return `${n(e.player)}의 말이 모두 떨어졌어요.`;
+      return `${n(e.player)}의 말이 모두 떨어졌어요. 이제 의심만 할 수 있어요.`;
     case 'forfeit':
       return `${n(e.player)} 님이 기권했어요.`;
     default:
@@ -61,7 +61,8 @@ function describe(e: GameEvent, g: PlayerView): string | null {
 /** 점수판 이름 옆의 한마디: 지금 무엇을 하는 중인지. */
 function plateStatus(game: PlayerView, i: number): string {
   const p = game.players[i]!;
-  if (p.out) return '탈락';
+  if (p.gone) return '나감';
+  if (p.out) return canRespond(p) && game.phase !== 'over' ? (game.phase === 'respond' ? (game.replies?.[i] ? '골랐음' : '고르는 중') : '말 없음') : '탈락';
   if (game.phase === 'over') return '';
   if (game.turn === i) return game.phase === 'respond' ? '선언함' : '차례';
   if (game.phase !== 'respond') return '';
@@ -72,7 +73,7 @@ function Plates({ game, me }: { game: PlayerView; me: number }) {
   return (
     <section className={'plates n' + game.players.length}>
       {game.players.map((p, i) => (
-        <div key={i} className={'plate' + (game.phase !== 'over' && game.turn === i ? ' active' : '') + (p.out ? ' out' : '')}>
+        <div key={i} className={'plate' + (game.phase !== 'over' && game.turn === i ? ' active' : '') + (p.out && !canRespond(p) ? ' out' : '')}>
           <div className="plateName">
             <Pawn player={i} scale={2} />
             <b>{p.name}</b>
@@ -122,8 +123,18 @@ function Actions({
   const [thrownRound, setThrownRound] = useState(-1);
   const many = game.players.length > 2;
 
-  // 말을 모두 잃은 사람은 끝까지 구경한다.
-  if (game.players[me]?.out) return <h2>말을 모두 잃었어요. 구경하는 중…</h2>;
+  // 굴릴 말이 없으면 굴리지 못한다. 완주한 말이 있으면 의심은 할 수 있고, 그것도 없으면 구경만 한다.
+  const mePlayer = game.players[me];
+  const pawnless = !!mePlayer?.out;
+  if (mePlayer && pawnless && !canRespond(mePlayer)) return <h2>말을 모두 잃었어요. 구경하는 중…</h2>;
+  if (pawnless && game.phase !== 'respond') {
+    return (
+      <>
+        <h2>{name(game.turn)}의 차례예요.</h2>
+        <small>굴릴 말이 없어서 의심만 할 수 있어요. 의심이 틀리면 완주한 말을 잃어요.</small>
+      </>
+    );
+  }
 
   if (game.phase === 'roll') {
     return myTurn ? (
@@ -188,6 +199,7 @@ function Actions({
         <h2>
           {name(game.turn)}: "{game.claim}칸!"
         </h2>
+        {pawnless && <small>의심이 틀리면 완주한 말 하나를 잃어요.</small>}
         {many && (
           <small>
             여럿이 의심하면 차례가 가까운 사람({responders(game).map(name).join(' → ')} 순)이 의심자가 돼요.
@@ -244,6 +256,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         die: hit.die,
         truth: hit.truth,
         victimName: room.game.players[hit.fallen]?.name ?? '?',
+        revoked: hit.revoked,
       });
     }
   }
@@ -515,7 +528,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                   <>
                     <Countdown deadline={deadline} />
                     <Actions room={room} game={game} send={send} controls={controls} settled={settled} />
-                    {room.seats.some((s, i) => !s.online && !game.players[i]?.out) && (
+                    {room.seats.some((s, i) => !s.online && !game.players[i]?.gone) && (
                       <p className="notice" role="status">
                         접속이 끊긴 사람이 있어요. 1분 안에 돌아오지 않으면 기권으로 처리돼요.
                       </p>

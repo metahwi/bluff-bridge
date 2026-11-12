@@ -1,6 +1,6 @@
 import { BLANK } from './rules.ts';
 import type { Rules } from './rules.ts';
-import { emptyStats, nextActive, pending, responders } from './state.ts';
+import { canRespond, emptyStats, nextActive, pending, responders } from './state.ts';
 import type { Action, GameEvent, GameState, Player } from './state.ts';
 
 /** 규칙에 어긋나는 행동. 서버는 이 오류를 그대로 요청자에게 돌려준다. */
@@ -27,10 +27,56 @@ function deploy(p: Player, idx: number, events: GameEvent[]): void {
   }
 }
 
-function fall(state: GameState, idx: number, events: GameEvent[]): void {
+/**
+ * 말 하나를 잃는다. 굴릴 말이 남아 있지 않은 사람은 이미 완주한 말을 대신 잃는다(true를 돌려준다).
+ * 그래서 앞서는 사람이 일부러 말을 다 버리고 판을 끝내는 수가 통하지 않는다: 말이 없어도 판은
+ * 계속되고, 그 뒤로는 의심이 틀릴 때마다 벌어 둔 완주가 깎인다.
+ */
+function fall(state: GameState, idx: number, events: GameEvent[]): boolean {
   const p = state.players[idx]!;
   p.lost++;
+  if (p.out) {
+    if (p.finished > 0) p.finished--;
+    return true;
+  }
   deploy(p, idx, events);
+  return false;
+}
+
+/** 순위: 완주가 많은 사람 → 먹힌 말이 적은 사람 → 굴릴 말이 남은 사람 → 방금 굴린 사람. */
+function best(state: GameState): number {
+  const order = state.players
+    .map((p, i) => ({ p, i }))
+    .filter(({ p }) => !p.gone)
+    .sort(
+      (a, b) =>
+        b.p.finished - a.p.finished ||
+        a.p.lost - b.p.lost ||
+        Number(a.p.out) - Number(b.p.out) ||
+        Number(b.i === state.turn) - Number(a.i === state.turn),
+    );
+  return order[0]!.i;
+}
+
+/**
+ * 판이 끝났는지 본다. 끝났으면 승자 번호, 아니면 -1.
+ *  - 누군가 정해진 수만큼 완주했다.
+ *  - 굴릴 말이 남은 사람이 아무도 없다 → 순위가 가장 높은 사람.
+ *  - 굴릴 말이 남은 사람이 한 명뿐이고 그 선언을 의심할 수 있는 사람도 없다 → 혼자 건너기만 하면
+ *    되므로 더 두지 않는다. 남은 말을 다 건너보내도 못 따라잡는 경우만 앞선 사람이 이긴다.
+ */
+function winnerOf(state: GameState): number {
+  const done = state.players.findIndex((p) => !p.gone && p.finished >= state.rules.finishesToWin);
+  if (done !== -1) return done;
+  const rollers = state.players.flatMap((p, i) => (p.out ? [] : [i]));
+  if (rollers.length === 0) return best(state);
+  if (rollers.length === 1 && !state.players.some((p, i) => i !== rollers[0] && canRespond(p))) {
+    const sole = state.players[rollers[0]!]!;
+    const reach = sole.finished + sole.reserve + (sole.pos !== null ? 1 : 0);
+    const rival = Math.max(-1, ...state.players.flatMap((p, i) => (i === rollers[0] || p.gone ? [] : [p.finished])));
+    return reach >= rival ? rollers[0]! : best(state);
+  }
+  return -1;
 }
 
 function advance(state: GameState, idx: number, steps: number, events: GameEvent[]): void {
@@ -53,17 +99,7 @@ function clearTurn(state: GameState): void {
 function endTurn(state: GameState, events: GameEvent[]): void {
   clearTurn(state);
 
-  let winner = state.players.findIndex((p) => p.finished >= state.rules.finishesToWin);
-  if (winner === -1) {
-    // 말이 남은 사람이 한 명 이하면 종료. 완주가 가장 많은 사람이 이기고,
-    // 동률이면 말이 남은 사람 → 이번 턴에 굴린 사람 순으로 우선한다.
-    const active = state.players.flatMap((p, i) => (p.out ? [] : [i]));
-    if (active.length <= 1) {
-      const best = Math.max(...state.players.map((p) => p.finished));
-      const top = state.players.flatMap((p, i) => (p.finished === best ? [i] : []));
-      winner = top.find((i) => i === active[0]) ?? top.find((i) => i === state.turn) ?? top[0]!;
-    }
-  }
+  const winner = winnerOf(state);
   if (winner !== -1) {
     state.phase = 'over';
     state.winner = winner;
@@ -96,8 +132,9 @@ function settle(state: GameState, events: GameEvent[]): void {
     const fallen = truth ? who : state.turn;
     state.stats[who]!.challenges++;
     if (!truth) state.stats[who]!.challengesWon++;
-    events.push({ type: 'challenged', challenger: who, roller: state.turn, die, claim, truth, fallen });
-    fall(state, fallen, events);
+    const event: GameEvent = { type: 'challenged', challenger: who, roller: state.turn, die, claim, truth, fallen };
+    events.push(event);
+    if (fall(state, fallen, events)) event.revoked = true;
     if (truth) advance(state, state.turn, claim, events);
     return endTurn(state, events);
   }
@@ -169,18 +206,20 @@ export function forfeit(prev: GameState, player: number): Result {
   state.stats ??= state.players.map(emptyStats);
   state.replies ??= state.players.map(() => null);
   const p = state.players[player];
-  if (!p || p.out) throw new GameError('기권할 수 없어요.');
+  if (!p || p.gone) throw new GameError('기권할 수 없어요.');
   const events: GameEvent[] = [{ type: 'forfeit', player }];
+  p.gone = true;
   p.out = true;
   p.pos = null;
   p.reserve = 0;
 
-  const active = state.players.flatMap((q, i) => (q.out ? [] : [i]));
-  if (active.length === 1) {
+  const staying = state.players.flatMap((q, i) => (q.gone ? [] : [i]));
+  const winner = staying.length === 1 ? staying[0]! : winnerOf(state);
+  if (winner !== -1) {
     state.phase = 'over';
-    state.winner = active[0]!;
+    state.winner = winner;
     clearTurn(state);
-    events.push({ type: 'over', winner: state.winner });
+    events.push({ type: 'over', winner });
   } else if (state.turn === player) {
     clearTurn(state);
     state.turn = nextActive(state, player);

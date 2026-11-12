@@ -147,15 +147,55 @@ describe('완주와 승패', () => {
 });
 
 describe('말이 떨어졌을 때의 승패', () => {
-  it('완주가 더 많으면 말을 다 써도 이긴다', () => {
+  /** a가 마지막 말로 1개를 완주해 말이 없고(1:0), b는 말이 남아 있는 상황. 다음은 b 차례. */
+  function leaderOutOfPawns(): GameState {
     const s0 = createGame(['a', 'b']);
-    Object.assign(s0.players[0]!, { pos: LEN - 1,reserve: 0 });
-    // a가 마지막 말로 1개 완주 → 말 소진. b는 완주 0개.
-    const { state } = play(toRespond(s0, 2, 2), 1, { type: 'accept' });
-    expect(state.players[0]).toMatchObject({ finished: 1, out: true });
+    Object.assign(s0.players[0]!, { pos: LEN - 1, reserve: 0 });
+    return play(toRespond(s0, 2, 2), 1, { type: 'accept' }).state;
+  }
+
+  it('앞서는 사람이 말을 다 써도 판은 끝나지 않고, 남은 사람이 계속 건넌다', () => {
+    const s = leaderOutOfPawns();
+    expect(s.players[0]).toMatchObject({ finished: 1, out: true });
+    expect([s.phase, s.turn, s.winner]).toEqual(['roll', 1, null]);
+    // 말이 없는 a는 굴리지 못하고 b가 계속 굴린다. a는 완주한 말이 있으니 의심은 할 수 있다.
+    const next = play(toRespond(s, 3, 3), 0, { type: 'accept' }).state;
+    expect([next.phase, next.turn, next.players[1]!.pos]).toEqual(['roll', 1, 3]);
+  });
+
+  it('말이 없는 사람의 의심이 틀리면 완주한 말을 잃는다', () => {
+    const { state, events } = play(toRespond(leaderOutOfPawns(), 3, 3), 0, { type: 'challenge' });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ truth: true, fallen: 0, revoked: true });
+    expect(state.players[0]).toMatchObject({ finished: 0, lost: 1, out: true });
+    // 이제 a는 잃을 말이 없어 의심도 못 한다. b 혼자 건너기만 하면 되므로 판을 끝낸다.
+    expect([state.phase, state.winner]).toEqual(['over', 1]);
+  });
+
+  it('말이 없는 사람의 의심이 맞으면 완주한 말은 그대로다', () => {
+    const { state, events } = play(toRespond(leaderOutOfPawns(), BLANK, 3), 0, { type: 'challenge' });
+    expect(events.find((e) => e.type === 'challenged')).toMatchObject({ truth: false, fallen: 1 });
+    expect(state.players[0]!.finished).toBe(1);
+    expect(state.players[1]!.lost).toBe(1);
+    expect(state.phase).toBe('roll');
+  });
+
+  it('남은 사람도 말이 다 떨어지면 완주가 많은 사람이 이긴다', () => {
+    const s = leaderOutOfPawns();
+    Object.assign(s.players[1]!, { reserve: 0 });
+    const { state } = play(toRespond(s, BLANK, 3), 0, { type: 'challenge' });
+    expect(state.players.map((p) => p.out)).toEqual([true, true]);
     expect([state.phase, state.winner]).toEqual(['over', 0]);
   });
 
+  it('남은 사람이 따라잡으면 완주가 같아도 먹힌 말이 적은 쪽이 이긴다', () => {
+    const s = leaderOutOfPawns();
+    Object.assign(s.players[0]!, { lost: 3 });
+    Object.assign(s.players[1]!, { pos: LEN - 1, reserve: 0, lost: 1 });
+    // b가 마지막 말로 완주해 1:1, 둘 다 말이 없다.
+    const { state } = play(toRespond(s, 2, 2), 0, { type: 'accept' });
+    expect(state.players.map((p) => p.finished)).toEqual([1, 1]);
+    expect([state.phase, state.winner]).toEqual(['over', 1]);
+  });
   it('둘 다 말이 떨어지고 완주 수가 같으면 굴린 사람이 이긴다', () => {
     const s0 = createGame(['a', 'b']);
     Object.assign(s0.players[0]!, { pos: LEN - 1,reserve: 0 });
