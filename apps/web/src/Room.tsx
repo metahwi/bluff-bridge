@@ -16,6 +16,7 @@ import type { DiceState } from './stage/dice.ts';
 import { useRoom } from './useRoom.ts';
 import { settings, useChat, useWork } from './settings.ts';
 import { Chat } from './Chat.tsx';
+import { ReplyOrder } from './ReplyOrder.tsx';
 import { WorkRoom, describeWork } from './work/WorkRoom.tsx';
 import { WorkChrome } from './work/WorkChrome.tsx';
 
@@ -37,6 +38,20 @@ function Countdown({ deadline }: { deadline: number | null }) {
   return <span className={'timer' + (left <= 5 ? ' urgent' : '')}>남은 시간 {left}초</span>;
 }
 
+/**
+ * 셋 이상일 때 의심이 어떤 순서로 반영됐는지: "① 디 믿기 → ② 에이 의심!" 과, 순서가 오지 않아 반영되지 않은 사람.
+ * 둘이서 할 때는 빈 글을 돌려준다.
+ */
+function replyTrail(e: Extract<GameEvent, { type: 'challenged' }>, n: (i: number) => string, words: { accept: string; doubt: string; skipped: (names: string) => string }) {
+  const order = e.order ?? [];
+  if (order.length < 2) return { lead: '', tail: '' };
+  const at = order.indexOf(e.challenger);
+  const mark = (k: number) => '①②③④'[k] ?? `${k + 1}`;
+  const lead = order.slice(0, at + 1).map((i, k) => `${mark(k)} ${n(i)} ${i === e.challenger ? words.doubt : words.accept}`).join(' → ') + ' → ';
+  const rest = order.slice(at + 1).map(n).join(', ');
+  return { lead, tail: rest ? ' ' + words.skipped(rest) : '' };
+}
+
 function describe(e: GameEvent, g: PlayerView): string | null {
   const n = (i: number) => g.players[i]?.name ?? '?';
   switch (e.type) {
@@ -44,10 +59,12 @@ function describe(e: GameEvent, g: PlayerView): string | null {
       return `${n(e.player)}: "${e.value}칸!"`;
     case 'accepted':
       return g.players.length > 2 ? `모두 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.` : `${n(e.player)}가 믿었어요. ${n(e.roller)} ${e.steps}칸 전진.`;
-    case 'challenged':
-      return e.truth
+    case 'challenged': {
+      const trail = replyTrail(e, n, { accept: '믿기', doubt: '의심!', skipped: (names) => `(${names}의 선택은 순서가 오지 않아 반영되지 않았어요.)` });
+      return trail.lead + (e.truth
         ? `${n(e.challenger)}의 의심 실패! 실제 눈은 ${face(e.die)}. ${n(e.challenger)}의 ${e.revoked ? '완주한 말이 끌려와' : '말이'} 하마 밥이 됐어요.`
-        : `${n(e.challenger)}의 의심 성공! 실제 눈은 ${face(e.die)}. ${n(e.roller)}의 말이 하마 밥이 됐어요.`;
+        : `${n(e.challenger)}의 의심 성공! 실제 눈은 ${face(e.die)}. ${n(e.roller)}의 말이 하마 밥이 됐어요.`) + trail.tail;
+    }
     case 'finished':
       return `${n(e.player)} 완주!`;
     case 'out':
@@ -67,6 +84,9 @@ function plateStatus(game: PlayerView, i: number): string {
   if (game.phase === 'over') return '';
   if (game.turn === i) return game.phase === 'respond' ? '선언함' : '차례';
   if (game.phase !== 'respond') return '';
+  const no = game.players.length > 2 ? `${responders(game).indexOf(i) + 1}번 · ` : '';
+  // 셋 이상이면 칸이 좁으므로 번호와 표시만: "2번 ✓"(골랐음), "2번 …"(고르는 중)
+  if (no) return responders(game).indexOf(i) + 1 + (game.replies?.[i] ? '번 ✓' : '번 …');
   return game.replies?.[i] ? '골랐음' : '고르는 중';
 }
 
@@ -191,7 +211,7 @@ function Actions({
           <h2>
             {myTurn ? `"${game.claim}칸!"` : mine === 'challenge' ? '의심하기로 했어요.' : '믿기로 했어요.'} {waitingFor}의 선택을 기다리는 중…
           </h2>
-          {mine === 'challenge' && many && <small>나보다 차례가 가까운 사람이 먼저 의심하면 그 사람이 의심자가 돼요.</small>}
+          {many && <ReplyOrder game={game} me={me} />}
         </>
       );
     }
@@ -201,11 +221,6 @@ function Actions({
           {name(game.turn)}: "{game.claim}칸!"
         </h2>
         {pawnless && <small>의심이 틀리면 완주한 말 하나를 잃어요.</small>}
-        {many && (
-          <small>
-            여럿이 의심하면 차례가 가까운 사람({responders(game).map(name).join(' → ')} 순)이 의심자가 돼요.
-          </small>
-        )}
         <div className="row">
           <button className="ghost" onClick={() => send({ t: 'act', action: { type: 'accept' } })}>
             믿기
@@ -214,6 +229,7 @@ function Actions({
             의심하기
           </button>
         </div>
+        {many && <ReplyOrder game={game} me={me} />}
       </>
     );
   }

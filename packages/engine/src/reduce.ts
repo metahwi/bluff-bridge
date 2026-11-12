@@ -132,7 +132,7 @@ function settle(state: GameState, events: GameEvent[]): void {
     const fallen = truth ? who : state.turn;
     state.stats[who]!.challenges++;
     if (!truth) state.stats[who]!.challengesWon++;
-    const event: GameEvent = { type: 'challenged', challenger: who, roller: state.turn, die, claim, truth, fallen };
+    const event: GameEvent = { type: 'challenged', challenger: who, roller: state.turn, die, claim, truth, fallen, order };
     events.push(event);
     if (fall(state, fallen, events)) event.revoked = true;
     if (truth) advance(state, state.turn, claim, events);
@@ -141,7 +141,7 @@ function settle(state: GameState, events: GameEvent[]): void {
 
   if (order.length === 0) return endTurn(state, events);
   if (!truth) state.stats[state.turn]!.bluffsPassed++;
-  events.push({ type: 'accepted', player: order[0]!, roller: state.turn, steps: claim });
+  events.push({ type: 'accepted', player: order[0]!, roller: state.turn, steps: claim, order });
   advance(state, state.turn, claim, events);
   endTurn(state, events);
 }

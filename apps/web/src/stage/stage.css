@@ -252,3 +252,20 @@ main.room.lobby .side > .chat { width: min(640px, 100%); }
   .side .chatList { height: 4.4em; }
   .side .panel.actions { padding: 12px 14px; }
 }
+/* ── 의심 순서(셋 이상) ── */
+.replyOrder { display: flex; flex-direction: column; gap: 6px; width: 100%; }
+.replyOrder ol { list-style: none; margin: 0; padding: 0; display: flex; flex-wrap: wrap; align-items: stretch; justify-content: center; gap: 4px 18px; }
+.replyOrder li { position: relative; display: grid; grid-template-columns: auto auto; align-items: center; gap: 0 5px; padding: 3px 8px; background: #fffaf0; border: 3px solid var(--ink); font-size: 13px; line-height: 1.25; text-align: left; }
+.replyOrder li + li::before { content: '▶'; position: absolute; left: -15px; top: 50%; transform: translateY(-50%); font-size: 10px; color: var(--dirt-dark); }
+.replyOrder li i { grid-row: 1 / 3; display: grid; place-items: center; width: 20px; height: 20px; background: var(--ink); color: var(--paper); font-style: normal; font-family: Galmuri11, sans-serif; font-size: 12px; font-weight: 700; }
+.replyOrder li b { max-width: 7em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.replyOrder li span { grid-column: 2; font-family: Galmuri11, sans-serif; font-size: 11px; color: var(--dirt-dark); }
+.replyOrder li.claimer { grid-template-columns: auto; background: var(--gold); }
+.replyOrder li.claimer span { grid-column: 1; color: var(--ink); }
+.replyOrder li.done { background: var(--paper-dark); }
+.replyOrder li.done i { background: var(--dirt-dark); }
+.replyOrder li.next { box-shadow: 0 0 0 3px var(--gold); }
+.replyOrder li.next span { color: var(--red-dark); font-weight: 700; }
+.replyOrder li.me b { text-decoration: underline; text-underline-offset: 3px; }
+.replyOrder small { text-align: center; }
+.replyOrder ol { padding: 0 14px; }

@@ -89,7 +89,8 @@ export type GameEvent =
   | { type: 'claimed'; player: number; value: number }
   /** 누군가 응답을 골랐다(무엇을 골랐는지는 담지 않는다). */
   | { type: 'replied'; player: number }
-  | { type: 'accepted'; player: number; roller: number; steps: number }
+  /** order: 이 선언에 응답한 사람들(판정 순서대로). 모두 믿었다. */
+  | { type: 'accepted'; player: number; roller: number; steps: number; order?: number[] }
   | {
       type: 'challenged';
       challenger: number;
@@ -98,6 +99,8 @@ export type GameEvent =
       claim: number;
       truth: boolean;
       fallen: number;
+      /** 이 선언에 응답할 수 있었던 사람들(판정 순서대로). 의심자 앞은 모두 믿었고, 뒤는 반영되지 않았다. */
+      order?: number[];
       /** 떨어진 사람에게 굴릴 말이 없어서, 이미 완주한 말을 대신 잃었다. */
       revoked?: boolean;
     }

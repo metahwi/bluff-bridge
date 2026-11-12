@@ -185,3 +185,15 @@
   [data-mode='work'] .chat.memo { margin-left: 6px; margin-right: 6px; }
   [data-mode='work'] .chat.memo .chatInput input { font-size: 16px; }
 }
+/* 검토 순서(셋 이상) */
+[data-mode='work'] .replyOrder ol { justify-content: flex-start; gap: 4px 16px; }
+[data-mode='work'] .replyOrder li { padding: 2px 8px; background: #fff; border: 1px solid #b5b5b5; font-size: 13px; }
+[data-mode='work'] .replyOrder li + li::before { content: '→'; left: -14px; font-size: 12px; color: var(--wb-muted); }
+[data-mode='work'] .replyOrder li i { width: 18px; height: 18px; background: var(--wb-green); color: #fff; font-family: inherit; border-radius: 9px; }
+[data-mode='work'] .replyOrder li span { font-family: inherit; color: var(--wb-muted); }
+[data-mode='work'] .replyOrder li.claimer { background: #e7efe9; }
+[data-mode='work'] .replyOrder li.done { background: #f1f1f1; }
+[data-mode='work'] .replyOrder li.done i { background: #8a8a8a; }
+[data-mode='work'] .replyOrder li.next { box-shadow: none; outline: 2px solid var(--wb-green); outline-offset: -1px; }
+[data-mode='work'] .replyOrder li.next span { color: #b3261e; }
+[data-mode='work'] .replyOrder small { text-align: left; }

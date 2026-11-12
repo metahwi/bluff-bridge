@@ -2,12 +2,13 @@
 //   말 = 안건, 다리 = 결재 라인(1~N단계), 완주 = 최종 승인, 먹힘 = 반려,
 //   주사위 = =RANDBETWEEN(), 꽝 = #N/A, 선언 = 보고, 믿기 = 승인, 의심 = 감사 요청, 뻥 = 허위 보고.
 import { useEffect, useState } from 'react';
-import { BLANK, POINTS, canRespond, emptyStats, pending, scoreOf } from '@bluff-bridge/engine';
+import { BLANK, POINTS, canRespond, emptyStats, pending, responders, scoreOf } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
 import type { ClientMessage, RoomView } from '@bluff-bridge/protocol/types';
 import type { ChompCue } from '../stage/StageView.tsx';
 import { Chat } from '../Chat.tsx';
+import { ReplyOrder } from '../ReplyOrder.tsx';
 import type { ChatLine } from '../useRoom.ts';
 import { WorkChrome, columnName } from './WorkChrome.tsx';
 
@@ -29,10 +30,21 @@ export function describeWork(e: GameEvent, g: PlayerView): string | null {
       return `${n(e.player)}: ${e.value}단계 진행 보고`;
     case 'accepted':
       return `${g.players.length > 2 ? '전원' : n(e.player)} 승인 → ${n(e.roller)} 안건 ${e.steps}단계 진행`;
-    case 'challenged':
-      return e.truth
-        ? `${n(e.challenger)} 감사 요청 → 정상 보고(실제 값 ${value(e.die)}). ${n(e.challenger)} ${e.revoked ? '최종 승인 1건 취소' : '안건 반려'}`
-        : `${n(e.challenger)} 감사 요청 → 허위 보고 적발(실제 값 ${value(e.die)}). ${n(e.roller)} 안건 반려`;
+    case 'challenged': {
+      const order = e.order ?? [];
+      const at = order.indexOf(e.challenger);
+      // 셋 이상이면 검토가 어떤 순서로 반영됐는지 앞에 적는다: "1차 비 승인 → 2차 디 감사 요청 → …"
+      const lead = order.length > 1 ? order.slice(0, at).map((i, k) => `${k + 1}차 ${n(i)} 승인 → `).join('') + `${at + 1}차 ` : '';
+      const skipped = order.length > 1 ? order.slice(at + 1).map(n).join(', ') : '';
+      const tail = skipped ? ` (${skipped} 검토는 미반영)` : '';
+      return (
+        lead +
+        (e.truth
+          ? `${n(e.challenger)} 감사 요청 → 정상 보고(실제 값 ${value(e.die)}). ${n(e.challenger)} ${e.revoked ? '최종 승인 1건 취소' : '안건 반려'}`
+          : `${n(e.challenger)} 감사 요청 → 허위 보고 적발(실제 값 ${value(e.die)}). ${n(e.roller)} 안건 반려`) +
+        tail
+      );
+    }
     case 'finished':
       return `${n(e.player)} 안건 최종 승인`;
     case 'out':
@@ -51,7 +63,8 @@ function reviewStatus(game: PlayerView, i: number): string {
   if (game.phase === 'over') return '';
   if (game.turn === i) return game.phase === 'respond' ? '보고' : '작성';
   if (game.phase !== 'respond') return '';
-  return game.replies?.[i] ? '완료' : '검토 중';
+  const no = game.players.length > 2 ? `${responders(game).indexOf(i) + 1}차 ` : '';
+  return no + (game.replies?.[i] ? '완료' : '검토 중');
 }
 
 function Countdown({ deadline }: { deadline: number | null }) {
@@ -323,6 +336,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, be
                 {myTurn ? '' : game.replies?.[me] === 'challenge' ? '감사를 요청했습니다. ' : '승인했습니다. '}{name(game.turn)}: {game.claim}단계 진행 보고{myTurn ? ` (실제 값 ${value(game.die)})` : ''}. {pending(game).map(name).join(', ')} 검토 중…
               </p>
             )}
+            {playing && !cue && game.phase === 'respond' && game.players.length > 2 && <ReplyOrder game={game} me={me} work />}
             {room.seats.some((s) => !s.online) && room.status === 'playing' && <p className="na">연결이 끊긴 참여자가 있습니다. 1분 안에 돌아오지 않으면 자리 비움으로 처리됩니다.</p>}
             {error && <p className="na">{error}</p>}
           </div>
