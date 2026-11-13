@@ -355,7 +355,8 @@ button.rankedBtn .badge { background: var(--ink); }
 .account .social { display: flex; flex-direction: column; gap: 8px; }
 /* 카카오 로그인 단추: 카카오가 정한 노란 바탕(#FEE500)과 검은 말풍선. */
 button.kakaoBtn, button.kakaoBtn:hover:not(:disabled) { display: flex; align-items: center; justify-content: center; gap: 8px; background: #fee500; color: #191919; box-shadow: inset -3px -3px 0 #d9c300, inset 3px 3px 0 rgb(255 255 255 / 0.4), 0 3px 0 var(--ink); }
-button.kakaoBtn svg { flex: none; }
+button.googleBtn, button.googleBtn:hover:not(:disabled) { display: flex; align-items: center; justify-content: center; gap: 8px; background: #fff; color: #1f1f1f; box-shadow: inset -3px -3px 0 #dadce0, 0 3px 0 var(--ink); }
+button.kakaoBtn svg, button.googleBtn svg { flex: none; }
 .account .social .or { align-self: center; font-size: 12px; color: var(--dirt-dark); }
 .account.join .perks { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
 .records.locked { position: relative; }
