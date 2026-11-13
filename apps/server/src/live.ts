@@ -75,9 +75,29 @@ function lastDays(days: number, now: number): string[] {
 export async function trends(db: D1Database, days = 14, now = Date.now()) {
   const since = now - days * DAY_MS;
   const day = `strftime('%m-%d', m.ended_at / 1000 + ${KST}, 'unixepoch')`;
-  const [games, players, signups, reasons, ratings, recent, newest] = await db.batch<Record<string, unknown>>([
+  // 플레이한 사람 = 그 기간에 한 판이라도 끝낸 계정(봇과 탈퇴한 계정 제외). 한 사람이 여러 판을 해도,
+  // 여러 날에 걸쳐 해도 한 번만 센다. 회원인지는 지금의 계정 상태로 본다.
+  const human = "mp.user_id NOT LIKE 'bot-%' AND mp.user_id != 'deleted'";
+  const isMember = 'u.id IS NOT NULL AND (u.isAnonymous IS NULL OR u.isAnonymous = 0)';
+  const uniqueSince = (from: number) =>
+    db
+      .prepare(
+        `SELECT COUNT(DISTINCT mp.user_id) AS n, COUNT(DISTINCT CASE WHEN ${isMember} THEN mp.user_id END) AS members
+           FROM match_players mp JOIN matches m ON m.id = mp.match_id LEFT JOIN user u ON u.id = mp.user_id
+          WHERE m.ended_at > ? AND ${human}`,
+      )
+      .bind(from);
+  // 한국 시간으로 오늘 0시
+  const todayStart = Math.floor((now + KST * 1000) / DAY_MS) * DAY_MS - KST * 1000;
+  const [games, players, signups, reasons, ratings, recent, newest, uToday, uWeek, uPeriod, uMonth] = await db.batch<Record<string, unknown>>([
     db.prepare(`SELECT ${day} AS d, COALESCE(m.mode, 'old') AS mode, COUNT(*) AS n FROM matches m WHERE m.ended_at > ? GROUP BY d, mode`).bind(since),
-    db.prepare(`SELECT ${day} AS d, COUNT(DISTINCT mp.user_id) AS n FROM match_players mp JOIN matches m ON m.id = mp.match_id WHERE m.ended_at > ? AND mp.user_id NOT LIKE 'bot-%' GROUP BY d`).bind(since),
+    db
+      .prepare(
+        `SELECT ${day} AS d, COUNT(DISTINCT mp.user_id) AS n, COUNT(DISTINCT CASE WHEN ${isMember} THEN mp.user_id END) AS members
+           FROM match_players mp JOIN matches m ON m.id = mp.match_id LEFT JOIN user u ON u.id = mp.user_id
+          WHERE m.ended_at > ? AND ${human} GROUP BY d`,
+      )
+      .bind(since),
     db.prepare(`SELECT strftime('%m-%d', createdAt, '+9 hours') AS d, SUM(CASE WHEN isAnonymous = 1 THEN 0 ELSE 1 END) AS members, SUM(CASE WHEN isAnonymous = 1 THEN 1 ELSE 0 END) AS guests FROM user WHERE createdAt > ? GROUP BY d`).bind(new Date(since).toISOString()),
     db.prepare('SELECT reason, COUNT(*) AS n, AVG(rounds) AS rounds FROM matches WHERE ended_at > ? GROUP BY reason').bind(since),
     db.prepare('SELECT rating FROM ratings WHERE games >= ? LIMIT 5000').bind(PLACEMENT_GAMES),
@@ -88,11 +108,20 @@ export async function trends(db: D1Database, days = 14, now = Date.now()) {
          FROM matches m ORDER BY m.ended_at DESC LIMIT 15`,
     ),
     db.prepare("SELECT name, isAnonymous AS guest, createdAt FROM user WHERE isAnonymous IS NULL OR isAnonymous = 0 ORDER BY createdAt DESC LIMIT 8"),
+    uniqueSince(todayStart),
+    uniqueSince(now - 7 * DAY_MS),
+    uniqueSince(since),
+    uniqueSince(now - 30 * DAY_MS),
   ]);
+  const unique = (r: (typeof uToday)) => {
+    const n = Number(r!.results[0]?.n ?? 0);
+    const members = Number(r!.results[0]?.members ?? 0);
+    return { all: n, members, guests: n - members };
+  };
 
   const labels = lastDays(days, now);
   const modes = ['friend', 'quick', 'ranked', 'bot', 'old'] as const;
-  const byDay = new Map(labels.map((d) => [d, { d, friend: 0, quick: 0, ranked: 0, bot: 0, old: 0, players: 0, members: 0, guests: 0 }]));
+  const byDay = new Map(labels.map((d) => [d, { d, friend: 0, quick: 0, ranked: 0, bot: 0, old: 0, players: 0, playerMembers: 0, playerGuests: 0, members: 0, guests: 0 }]));
   for (const r of games!.results) {
     const row = byDay.get(String(r.d));
     const mode = modes.find((m) => m === r.mode) ?? 'old';
@@ -100,7 +129,7 @@ export async function trends(db: D1Database, days = 14, now = Date.now()) {
   }
   for (const r of players!.results) {
     const row = byDay.get(String(r.d));
-    if (row) row.players = Number(r.n);
+    if (row) Object.assign(row, { players: Number(r.n), playerMembers: Number(r.members), playerGuests: Number(r.n) - Number(r.members) });
   }
   for (const r of signups!.results) {
     const row = byDay.get(String(r.d));
@@ -110,6 +139,8 @@ export async function trends(db: D1Database, days = 14, now = Date.now()) {
   for (const r of ratings!.results) tiers[tierOf(Number(r.rating))]!++;
 
   return {
+    // 고유 인원: 오늘(DAU), 최근 7일(WAU), 차트 기간(14일), 최근 30일(MAU)
+    unique: { today: unique(uToday), week: unique(uWeek), period: unique(uPeriod), month: unique(uMonth) },
     days: [...byDay.values()],
     reasons: reasons!.results.map((r) => ({ reason: String(r.reason), n: Number(r.n), rounds: Math.round(Number(r.rounds) * 10) / 10 })),
     tiers,

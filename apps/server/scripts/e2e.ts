@@ -541,6 +541,11 @@ try {
   const trend = (await (await asAdmin('trends')).json()) as { days: Record<string, number>[]; recent: { mode: string; players: string }[] };
   const todayRow = trend.days.at(-1)!;
   check(trend.days.length === 14 && todayRow.friend! >= 1 && todayRow.ranked! >= 1 && todayRow.players! >= 4, `오늘 추이가 이상함: ${JSON.stringify(todayRow)}`);
+  // 고유 인원: 오늘 값은 오늘 막대와 같고, 기간 전체는 날짜별 값을 더한 것보다 클 수 없다(같은 사람은 한 번만)
+  const uniq = (trend as unknown as { unique: Record<'today' | 'week' | 'period' | 'month', { all: number; members: number; guests: number }> }).unique;
+  const dailySum = trend.days.reduce((n, d) => n + d.players!, 0);
+  check(uniq.today.all === todayRow.players && uniq.today.all === uniq.today.members + uniq.today.guests, `오늘 고유 인원이 막대와 다름: ${JSON.stringify(uniq.today)} / ${todayRow.players}`);
+  check(uniq.period.all <= dailySum && uniq.today.all <= uniq.week.all && uniq.week.all <= uniq.period.all && uniq.period.all <= uniq.month.all, `고유 인원의 크기 순서가 이상함: ${JSON.stringify(uniq)} (날짜별 합 ${dailySum})`);
   const logged = ((await (await asAdmin('log')).json()) as { log: { action: string; detail: string }[] }).log;
   check(logged.some((l) => l.action === '설정 변경' && l.detail.includes('botsEnabled')) && logged.some((l) => l.action === '로그인 실패'), '관리자 활동 기록에 설정 변경이나 로그인 실패가 없음');
   // 다른 사이트에서 보낸 것처럼 꾸민 변경 요청은 쿠키가 있어도 거절된다

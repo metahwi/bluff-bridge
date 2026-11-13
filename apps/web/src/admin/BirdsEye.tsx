@@ -26,8 +26,15 @@ interface Live {
   playersInGame: number;
   botsInGame: number;
 }
-type Day = { d: string; players: number; members: number; guests: number } & Record<ModeKey, number>;
+type Day = { d: string; players: number; playerMembers: number; playerGuests: number; members: number; guests: number } & Record<ModeKey, number>;
+/** 고유 인원(한 사람은 한 번만). */
+interface Unique {
+  all: number;
+  members: number;
+  guests: number;
+}
 interface Trends {
+  unique: { today: Unique; week: Unique; period: Unique; month: Unique };
   days: Day[];
   reasons: { reason: string; n: number; rounds: number }[];
   tiers: number[];
@@ -68,7 +75,20 @@ function Kpi({ label, value, before, note }: { label: string; value: number; bef
  * 날짜별 세로 막대. series가 여럿이면 쌓아서 그린다(사이에 2px 틈).
  * 막대에 마우스를 올리거나 초점을 주면 그날의 숫자가 뜨고, '표로 보기'로 같은 숫자를 표로 볼 수 있다.
  */
-function Bars({ title, days, series, unit }: { title: string; days: Day[]; series: { key: keyof Day; label: string; color: string }[]; unit: string }) {
+function Bars({
+  title,
+  days,
+  series,
+  unit,
+  summary,
+}: {
+  title: string;
+  days: Day[];
+  series: { key: keyof Day; label: string; color: string }[];
+  unit: string;
+  /** 아무 막대도 가리키지 않을 때 제목 옆에 보일 글. 없으면 날짜별 값을 더한 합계를 보인다(더해도 되는 값일 때만). */
+  summary?: string;
+}) {
   const [hover, setHover] = useState<number | null>(null);
   const sum = (d: Day) => series.reduce((n, s) => n + Number(d[s.key]), 0);
   const max = Math.max(1, ...days.map(sum));
@@ -83,7 +103,7 @@ function Bars({ title, days, series, unit }: { title: string; days: Day[]; serie
         <span className="admChartNow">
           {shown
             ? `${shown.d} · ${series.length > 1 ? used.filter((s) => Number(shown[s.key]) > 0).map((s) => `${s.label} ${shown[s.key]}`).join(', ') + ' · 합계 ' : ''}${sum(shown)}${unit}`
-            : `14일 합계 ${days.reduce((n, d) => n + sum(d), 0).toLocaleString('ko-KR')}${unit}`}
+            : (summary ?? `14일 합계 ${days.reduce((n, d) => n + sum(d), 0).toLocaleString('ko-KR')}${unit}`)}
         </span>
       </figcaption>
       {series.length > 1 && (
@@ -274,10 +294,16 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
         )}
       </Section>
 
-      <Section title="오늘" note="한국 시간 기준">
+      <Section title="오늘" note="한국 시간 기준 · 사람 수는 모두 고유 인원(한 사람은 한 번만, 봇 제외)">
         <div className="admCards">
           <Kpi label="끝난 판" value={total(today)} before={total(yesterday)} note={`전체 ${totals.data.matches.toLocaleString('ko-KR')}판`} />
-          <Kpi label="플레이한 사람" value={today.players} before={yesterday.players} note="봇 제외" />
+          <Kpi label="오늘 플레이한 사람 (DAU)" value={T.unique.today.all} before={yesterday.players} note={`회원 ${T.unique.today.members} · 게스트 ${T.unique.today.guests}`} />
+          <Kpi label="최근 7일 (WAU)" value={T.unique.week.all} note={`회원 ${T.unique.week.members} · 게스트 ${T.unique.week.guests}`} />
+          <Kpi
+            label="최근 30일 (MAU)"
+            value={T.unique.month.all}
+            note={`회원 ${T.unique.month.members} · 매일 오는 비율 ${T.unique.month.all ? Math.round((T.unique.today.all / T.unique.month.all) * 100) : 0}%`}
+          />
           <Kpi label="새 회원" value={today.members} before={yesterday.members} note={`전체 ${totals.data.members.toLocaleString('ko-KR')}명`} />
           <Kpi label="새 게스트" value={today.guests} before={yesterday.guests} note={`전체 ${totals.data.guests.toLocaleString('ko-KR')}명`} />
           <Kpi label="받은 의견" value={totals.data.feedback} note="의견 탭에서 확인" />
@@ -288,7 +314,17 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
       <Section title="최근 14일">
         <div className="admGrid">
           <Bars title="끝난 판 (종류별)" days={T.days} unit="판" series={MODES.map((m) => ({ key: m.key, label: m.label, color: m.color }))} />
-          <Bars title="플레이한 사람" days={T.days} unit="명" series={[{ key: 'players', label: '플레이한 사람', color: '#2a78d6' }]} />
+          <Bars
+            title="플레이한 사람 (하루 고유 인원)"
+            days={T.days}
+            unit="명"
+            // 같은 사람이 여러 날 하면 날짜마다 한 번씩 잡히므로, 날짜별 값을 더하지 않고 기간 전체의 고유 인원을 따로 센다.
+            summary={`14일 동안 고유 ${T.unique.period.all.toLocaleString('ko-KR')}명 (회원 ${T.unique.period.members} · 게스트 ${T.unique.period.guests})`}
+            series={[
+              { key: 'playerMembers', label: '회원', color: '#2a78d6' },
+              { key: 'playerGuests', label: '게스트', color: '#eb6834' },
+            ]}
+          />
           <Bars title="새 회원" days={T.days} unit="명" series={[{ key: 'members', label: '새 회원', color: '#2a78d6' }]} />
           <Rows
             title="판이 끝난 이유"
