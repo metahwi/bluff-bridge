@@ -28,6 +28,9 @@ let gore = read(GORE_KEY, true);
 let work = read(WORK_KEY, false);
 let chat = read(CHAT_KEY, true);
 
+const WORK_ICON =
+  '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="2" fill="#1d6b45"/><path d="M4 5h8M4 8h8M4 11h8M8 5v6" stroke="#fff" stroke-width="1.2"/></svg>';
+
 /** 업무 모드를 문서 전체에 알린다: CSS가 이 표시를 보고 화면을 바꾸고, 소리는 꺼진다. */
 function applyWork(): void {
   if (typeof document !== 'undefined') {
@@ -35,18 +38,9 @@ function applyWork(): void {
     document.title = work ? '4분기 실적집계.xlsx' : '하마하마';
     // 브라우저 탭의 그림과 주소창 색도 표 문서처럼 바꾼다.
     document.querySelector('meta[name="theme-color"]')?.setAttribute('content', work ? '#1d6b45' : '#7cc25b');
-    let icon = document.querySelector<HTMLLinkElement>('link[data-work-icon]');
-    if (work && !icon) {
-      icon = document.createElement('link');
-      icon.rel = 'icon';
-      icon.dataset.workIcon = '';
-      icon.href =
-        'data:image/svg+xml,' +
-        encodeURIComponent(
-          '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 16 16"><rect x="1" y="1" width="14" height="14" rx="2" fill="#1d6b45"/><path d="M4 5h8M4 8h8M4 11h8M8 5v6" stroke="#fff" stroke-width="1.2"/></svg>',
-        );
-      document.head.append(icon);
-    } else if (!work) icon?.remove();
+    // 탭 그림은 하나만 두고 주소를 바꾼다: 게임 화면은 하마, 업무 모드는 표 문서.
+    const icon = document.querySelector<HTMLLinkElement>('link#favicon');
+    if (icon) icon.href = work ? 'data:image/svg+xml,' + encodeURIComponent(WORK_ICON) : '/favicon.svg';
   }
   sound.setWorkMute(work);
 }
