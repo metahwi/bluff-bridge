@@ -269,3 +269,22 @@ main.room.lobby .side > .chat { width: min(640px, 100%); }
 .replyOrder li.me b { text-decoration: underline; text-underline-offset: 3px; }
 .replyOrder small { text-align: center; }
 .replyOrder ol { padding: 0 14px; }
+
+/* ── 휴대폰: 오른쪽 위 설정(톱니바퀴) ── */
+@media (max-width: 520px) {
+  /* 방 머리말은 항상 한 줄: 방 코드는 왼쪽, 단추들은 오른쪽 끝에 붙인다. 좁으면 '연결됨' 글자를 숨긴다. */
+  main.room > header { flex-wrap: nowrap; }
+  main.room > header > span:first-child { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  main.room > header .row { flex: none; flex-wrap: nowrap; }
+  main.room > header button { white-space: nowrap; }
+  /* 설정 창은 톱니바퀴 위치와 상관없이 화면 폭에 맞춰 띄운다(화면 밖으로 나가지 않게) */
+  .settingsPanel { position: fixed; top: calc(max(8px, env(safe-area-inset-top)) + 52px); left: 8px; right: 8px; width: auto; max-height: calc(100dvh - 68px - env(safe-area-inset-top)); overflow-y: auto; overscroll-behavior: contain; }
+  /* 첫 화면: 떠 있는 톱니바퀴가 로고를 가리지 않게 로고를 아래로 내리고 크기를 화면에 맞춘다 */
+  main.home { padding-top: calc(max(8px, env(safe-area-inset-top)) + 46px); }
+  .logo { font-size: clamp(40px, 14vw, 60px); }
+}
+@media (max-width: 400px) {
+  main.room > header .conn.open { display: none; }
+  main.room > header button.small { font-size: 11px; }
+}/* 톱니바퀴 단추에는 글자 단추의 좌우 여백을 주지 않는다(그림이 밀려 잘리지 않게) */
+button.gear, main.room > header button.gear { padding: 0; }
