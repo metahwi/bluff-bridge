@@ -64,6 +64,8 @@ app.get('/api/me', async (c) => {
     providers: enabledProviders(c.env),
     // 관리자가 올린 공지(없으면 빈 글).
     notice: (await getSettings(c.env.DB)).notice,
+    // 방문 집계(Cloudflare Web Analytics) 토큰. 비어 있으면 화면이 집계 스크립트를 붙이지 않는다.
+    analytics: (await getSettings(c.env.DB)).analyticsToken,
     records: user ? await getRecords(c.env.DB, user.id) : null,
     // 순위전은 회원만 한다.
     rank: user && !user.isAnonymous ? await getRank(c.env.DB, user.id) : null,

@@ -104,3 +104,6 @@ main.adm.wide { max-width: 1320px; }
 .admFeed li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid #e6e9ed; }
 .admFeedMain { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
 .admFeed small { display: inline; }
+.admCard b small { display: inline; margin-left: 2px; font-size: 14px; font-weight: 400; color: #656d76; }
+.admTag.warn { background: #fff2cc; color: #7a5b00; }
+.admBtns { display: inline-flex; gap: 6px; }

@@ -38,7 +38,20 @@ async function guest(name: string): Promise<string> {
     body: JSON.stringify({ name }),
   });
   if (!update.ok) throw new Error(`닉네임 저장 실패: ${update.status} ${await update.text()}`);
+  await markAsTest(cookie);
   return cookie;
+}
+
+/**
+ * 이 점검이 만든 계정을 '점검용'으로 표시한다. 표시된 계정은 관리자 페이지의 모든 통계에서 빠지므로,
+ * 점검을 아무리 돌려도 실제 이용자 수가 부풀지 않는다. 가입하면 계정이 새로 생기므로 그때도 다시 부른다.
+ */
+async function markAsTest(cookie: string): Promise<void> {
+  const token = process.env.ADMIN_TOKEN ?? readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^ADMIN_TOKEN=(.+)$/m)?.[1];
+  const id = ((await (await fetch(`${base}/api/me`, { headers: { Cookie: cookie } })).json()) as { user: { id: string } | null }).user?.id;
+  if (!id) return;
+  // 표가 아직 없으면(맨 처음 실행) 실패할 수 있다. 그 경우는 넘어간다.
+  await fetch(`${base}/api/admin/users/${id}/test`, { method: 'POST', headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' }, body: '{"test":true}' }).catch(() => null);
 }
 
 interface MeResponse {
@@ -274,6 +287,7 @@ const guestB = (await me(cookieB)).user!;
 check((await authPost('sign-up/email', { name: '비', email, password: 'short' }, cookieB)).ok === false, '짧은 비밀번호로 가입됨');
 const signedUp = await authPost('sign-up/email', { name: '비', email, password, agreedAt: Date.now() }, cookieB);
 check(signedUp.ok, `회원가입 실패: ${signedUp.status} ${signedUp.text}`);
+await markAsTest(signedUp.cookie);
 const member = await me(signedUp.cookie);
 check(member.user?.isAnonymous === false && member.user.id !== guestB.id, `가입 후에도 게스트임: ${JSON.stringify(member.user)}`);
 check(member.records?.played === 2, `게스트 때의 전적이 옮겨지지 않음: ${member.records?.played}`);
@@ -390,6 +404,7 @@ const rankPassword = 'ranked-hippo-1234';
 async function newMember(name: string): Promise<{ name: string; cookie: string }> {
   const res = await authPost('sign-up/email', { name, email: `rank-${Math.random().toString(36).slice(2)}-${Date.now()}@example.com`, password: rankPassword, agreedAt: Date.now() }, await guest(name));
   if (!res.ok) throw new Error(`점검용 회원 가입 실패: ${res.status} ${res.text}`);
+  await markAsTest(res.cookie);
   return { name, cookie: res.cookie };
 }
 
@@ -486,9 +501,9 @@ const asAdmin = (path: string, init: RequestInit = {}) =>
 check(((await (await asAdmin('session')).json()) as { admin: boolean }).admin === true, '관리자 세션이 확인되지 않음');
 check(((await (await fetch(`${base}/api/admin/session`)).json()) as { admin: boolean }).admin === false, '쿠키 없이 관리자로 보임');
 const overview = (await (await asAdmin('overview')).json()) as Record<string, number>;
-check(overview.matches! > 0 && overview.users! > 0 && typeof overview.members === 'number', `개요 숫자가 이상함: ${JSON.stringify(overview)}`);
+check(typeof overview.matches === 'number' && typeof overview.members === 'number' && overview.testUsers! > 0, `개요 숫자가 이상함: ${JSON.stringify(overview)}`);
 const listed = (await (await asAdmin('users?guests=1&q=' + encodeURIComponent('에이'))).json()) as { users: { name: string; guest: boolean; email: string | null }[] };
-check(listed.users.some((u) => u.name === '에이' && u.guest && u.email === null), '회원 목록에서 게스트를 찾지 못함');
+check(listed.users.some((u) => u.name === '에이' && u.guest && u.email === null && (u as { test?: boolean }).test === true), '회원 목록에서 점검용 게스트를 찾지 못함');
 
 interface GameSettings {
   botsEnabled: boolean;
@@ -540,7 +555,18 @@ try {
   // 한눈에 보기용 추이: 오늘 끝난 판이 종류별로 잡히고, 활동 기록에 설정 변경이 남는다
   const trend = (await (await asAdmin('trends')).json()) as { days: Record<string, number>[]; recent: { mode: string; players: string }[] };
   const todayRow = trend.days.at(-1)!;
-  check(trend.days.length === 14 && todayRow.friend! >= 1 && todayRow.ranked! >= 1 && todayRow.players! >= 4, `오늘 추이가 이상함: ${JSON.stringify(todayRow)}`);
+  check(trend.days.length === 14, `추이의 날짜 수가 다름: ${trend.days.length}`);
+  // 이 점검이 만든 계정은 통계에서 빠진다: 방금 한 판들이 '방금 끝난 판'에 보이지 않아야 한다
+  check(!trend.recent.some((m) => /(^|, )★?(에이|비|씨|디|피|큐|알)(,|$)/.test(m.players)), `점검용 계정의 판이 통계에 들어감: ${JSON.stringify(trend.recent.slice(0, 3))}`);
+  // 표시를 풀면 그 사람이 다시 세어진다(표시가 실제로 통계를 좌우하는지 확인). 확인 뒤 다시 표시한다.
+  const idA = (await me(cookieA)).user!.id;
+  const monthBefore = (trend as unknown as { unique: { month: { all: number } } }).unique.month.all;
+  await asAdmin(`users/${idA}/test`, { method: 'POST', body: '{"test":false}' });
+  const monthAfter = ((await (await asAdmin('trends')).json()) as { unique: { month: { all: number } } }).unique.month.all;
+  await asAdmin(`users/${idA}/test`, { method: 'POST', body: '{"test":true}' });
+  check(monthAfter === monthBefore + 1, `점검용 표시를 풀어도 인원이 그대로임: ${monthBefore} → ${monthAfter}`);
+  const engagement = (trend as unknown as { engagement: { gamesPerPlayer: number; nextDay: { base: number; back: number } } }).engagement;
+  check(typeof engagement.gamesPerPlayer === 'number' && engagement.nextDay.back <= engagement.nextDay.base, `참여 지표가 이상함: ${JSON.stringify(engagement)}`);
   // 고유 인원: 오늘 값은 오늘 막대와 같고, 기간 전체는 날짜별 값을 더한 것보다 클 수 없다(같은 사람은 한 번만)
   const uniq = (trend as unknown as { unique: Record<'today' | 'week' | 'period' | 'month', { all: number; members: number; guests: number }> }).unique;
   const dailySum = trend.days.reduce((n, d) => n + d.players!, 0);

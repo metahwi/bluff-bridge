@@ -9,7 +9,7 @@ import { getMigrations } from 'better-auth/db/migration';
 import { PLACEMENT_GAMES, RATING_START, tierOf } from '@bluff-bridge/engine';
 import { getAuth } from './auth.ts';
 import type { Env } from './index.ts';
-import { LIVE_TABLES, liveRooms, trends } from './live.ts';
+import { LIVE_TABLES, REAL_MATCH, REAL_USER, STAT_TABLES, liveRooms, markTest, markTestByNames, trends } from './live.ts';
 import { RANK_TABLES } from './ranking.ts';
 import { RECORD_ALTERS, RECORD_BACKFILL, RECORD_TABLES } from './records.ts';
 import { SETTINGS_TABLES, getSettings, saveSettings } from './settings.ts';
@@ -140,7 +140,7 @@ admin.use('*', async (c, next) => {
 admin.post('/migrate', async (c) => {
   const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(getAuth(c.env, c.req.raw).options);
   await runMigrations();
-  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES, ...RANK_TABLES, ...SETTINGS_TABLES, ...ADMIN_TABLES, ...LIVE_TABLES].map((sql) => c.env.DB.prepare(sql)));
+  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES, ...RANK_TABLES, ...SETTINGS_TABLES, ...ADMIN_TABLES, ...LIVE_TABLES, ...STAT_TABLES].map((sql) => c.env.DB.prepare(sql)));
   // 나중에 추가한 열: 이미 있으면 실패하므로 하나씩 실행하고 넘어간다.
   for (const sql of RECORD_ALTERS) await c.env.DB.prepare(sql).run().catch(() => null);
   await c.env.DB.batch(RECORD_BACKFILL.map((sql) => c.env.DB.prepare(sql)));
@@ -154,18 +154,20 @@ admin.get('/overview', async (c) => {
   const day = 24 * 60 * 60 * 1000;
   const n = async (sql: string, ...args: unknown[]) => Number((await db.prepare(sql).bind(...args).first<{ n: number }>())?.n ?? 0);
   const [users, members, matchesDay, matchesWeek, matches, botMatches, ranked, rankedPlayers, chat, feedback] = await Promise.all([
-    n('SELECT COUNT(*) AS n FROM user'),
-    n('SELECT COUNT(*) AS n FROM user WHERE isAnonymous IS NULL OR isAnonymous = 0'),
-    n('SELECT COUNT(*) AS n FROM matches WHERE ended_at > ?', now - day),
-    n('SELECT COUNT(*) AS n FROM matches WHERE ended_at > ?', now - 7 * day),
-    n('SELECT COUNT(*) AS n FROM matches'),
-    n("SELECT COUNT(DISTINCT match_id) AS n FROM match_players WHERE user_id LIKE 'bot-%'"),
+    // 점검용 계정과 그 계정들끼리 한 판은 세지 않는다.
+    n(`SELECT COUNT(*) AS n FROM user u WHERE ${REAL_USER}`),
+    n(`SELECT COUNT(*) AS n FROM user u WHERE (u.isAnonymous IS NULL OR u.isAnonymous = 0) AND ${REAL_USER}`),
+    n(`SELECT COUNT(*) AS n FROM matches m WHERE m.ended_at > ? AND ${REAL_MATCH}`, now - day),
+    n(`SELECT COUNT(*) AS n FROM matches m WHERE m.ended_at > ? AND ${REAL_MATCH}`, now - 7 * day),
+    n(`SELECT COUNT(*) AS n FROM matches m WHERE ${REAL_MATCH}`),
+    n(`SELECT COUNT(*) AS n FROM matches m WHERE m.mode = 'bot' AND ${REAL_MATCH}`),
     n('SELECT COUNT(DISTINCT match_id) AS n FROM rating_changes'),
     n('SELECT COUNT(*) AS n FROM ratings WHERE games >= ?', PLACEMENT_GAMES),
     n('SELECT COUNT(*) AS n FROM chat_messages'),
     n('SELECT COUNT(*) AS n FROM feedback'),
   ]);
-  return c.json({ users, members, guests: users - members, matchesDay, matchesWeek, matches, botMatches, ranked, rankedPlayers, chat, chatKeepDays: CHAT_KEEP_DAYS, feedback });
+  const testUsers = await n('SELECT COUNT(*) AS n FROM test_users');
+  return c.json({ testUsers, users, members, guests: users - members, matchesDay, matchesWeek, matches, botMatches, ranked, rankedPlayers, chat, chatKeepDays: CHAT_KEEP_DAYS, feedback });
 });
 
 /** 지금 이 순간: 열려 있는 방과 매칭 줄. */
@@ -204,7 +206,8 @@ admin.get('/users', async (c) => {
   const rows = await c.env.DB.prepare(
     `SELECT u.id, u.name, u.email, u.isAnonymous AS guest, u.createdAt,
             r.rating, r.games, r.wins, r.losses,
-            (SELECT COUNT(*) FROM match_players mp WHERE mp.user_id = u.id) AS played
+            (SELECT COUNT(*) FROM match_players mp WHERE mp.user_id = u.id) AS played,
+            EXISTS (SELECT 1 FROM test_users t WHERE t.user_id = u.id) AS test
        FROM user u LEFT JOIN ratings r ON r.user_id = u.id
       ${where.length ? 'WHERE ' + where.join(' AND ') : ''}
       ORDER BY u.createdAt DESC LIMIT 200`,
@@ -218,6 +221,8 @@ admin.get('/users', async (c) => {
       // 게스트와 카카오 계정의 이메일 칸은 자리를 채우려고 만든 값이라 보여 주지 않는다.
       email: typeof u.email === 'string' && !/\.invalid$/.test(u.email) ? u.email : null,
       guest: !!u.guest,
+      /** 점검용 계정(통계에서 뺌). */
+      test: !!u.test,
       createdAt: u.createdAt,
       played: Number(u.played ?? 0),
       rating: u.rating === null || u.rating === undefined ? null : Number(u.rating),
@@ -227,6 +232,28 @@ admin.get('/users', async (c) => {
       tier: u.rating !== null && u.rating !== undefined && Number(u.games ?? 0) >= PLACEMENT_GAMES ? tierOf(Number(u.rating)) : null,
     })),
   });
+});
+
+/** 계정을 점검용으로 표시하거나 해제한다. 표시된 계정은 모든 통계에서 빠진다. */
+admin.post('/users/:id/test', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { test?: unknown } | null;
+  const test = body?.test !== false;
+  await markTest(c.env.DB, c.req.param('id'), test);
+  // 점검 스크립트가 계정을 만들 때마다 부르므로, 사람이 화면에서 누른 것만 활동 기록에 남긴다.
+  if (!c.req.header('Authorization')) await log(c.env, c.req.raw, test ? '점검용 계정으로 표시' : '점검용 표시 해제', c.req.param('id'));
+  return c.json({ ok: true, test });
+});
+
+/**
+ * 이름으로 점검용 계정을 한꺼번에 표시한다(표시 기능이 생기기 전의 계정 정리용).
+ * apply가 true가 아니면 몇 개가 해당하는지만 알려 준다.
+ */
+admin.post('/test-users/by-names', async (c) => {
+  const body = (await c.req.json().catch(() => null)) as { names?: unknown; apply?: unknown } | null;
+  const names = Array.isArray(body?.names) ? body.names.filter((x): x is string => typeof x === 'string' && x.length > 0) : [];
+  const result = await markTestByNames(c.env.DB, names, body?.apply !== true);
+  if (body?.apply === true) await log(c.env, c.req.raw, '점검용 계정 일괄 표시', `판을 한 계정 ${result.players}, 안 한 계정 ${result.idle}`);
+  return c.json({ ...result, applied: body?.apply === true });
 });
 
 /** 순위전 점수를 고친다. rating을 비우면 처음 상태(기록 없음)로 되돌린다. */

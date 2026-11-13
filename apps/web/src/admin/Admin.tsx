@@ -47,6 +47,7 @@ interface SettingsData {
   turnSeconds: number;
   freeChat: boolean;
   notice: string;
+  analyticsToken: string;
 }
 
 function Switch({ label, hint, on, onChange }: { label: string; hint: string; on: boolean; onChange: (on: boolean) => void }) {
@@ -147,6 +148,19 @@ function Settings({ onForbidden }: { onForbidden: () => void }) {
         <textarea aria-label="공지" rows={2} maxLength={200} value={draft.notice} onChange={(e) => setDraft({ ...draft, notice: e.target.value })} />
       </div>
 
+      <h2>방문 집계</h2>
+      <div className="admRow wide">
+        <div>
+          <b>Cloudflare Web Analytics 토큰</b>
+          <small>
+            넣으면 방문자 수·유입 경로·기기를 Cloudflare 대시보드(Analytics &amp; Logs → Web Analytics)에서 볼 수 있습니다. 쿠키를 쓰지 않습니다. 사이트를 추가할 때 받는 32자리
+            토큰을 붙여 넣으세요. 비우면 집계하지 않습니다.
+          </small>
+        </div>
+        <input aria-label="Cloudflare Web Analytics 토큰" placeholder="예: 0123456789abcdef0123456789abcdef" value={draft.analyticsToken} onChange={(e) => setDraft({ ...draft, analyticsToken: e.target.value.trim() })} />
+        {draft.analyticsToken !== '' && !/^[a-f0-9]{32}$/i.test(draft.analyticsToken) && <small className="admError">토큰은 0~9, a~f로 된 32자리입니다.</small>}
+      </div>
+
       <div className="admActions">
         <button disabled={busy || !dirty} onClick={() => save(draft)}>
           {busy ? '저장하는 중…' : '저장'}
@@ -162,6 +176,8 @@ interface UserRow {
   name: string;
   email: string | null;
   guest: boolean;
+  /** 점검용 계정: 통계에서 뺀다. */
+  test: boolean;
   createdAt: unknown;
   played: number;
   rating: number | null;
@@ -180,6 +196,17 @@ function Users({ onForbidden }: { onForbidden: () => void }) {
     e.preventDefault();
     setQuery(`users?q=${encodeURIComponent(q)}${guests ? '&guests=1' : ''}`);
   };
+
+  /** 점검용 계정(내 시험 계정 등)으로 표시하면 그 계정과 그 계정끼리 한 판이 모든 통계에서 빠진다. */
+  async function setTest(u: UserRow) {
+    try {
+      await api(`users/${encodeURIComponent(u.id)}/test`, { method: 'POST', body: JSON.stringify({ test: !u.test }) });
+      reload();
+    } catch (e) {
+      if (e instanceof Forbidden) return onForbidden();
+      alert(e instanceof Error ? e.message : '바꾸지 못했어요.');
+    }
+  }
 
   async function setRating(u: UserRow) {
     const input = prompt(`${u.name}의 순위전 점수 (비우면 기록을 지우고 처음 상태로)`, u.rating === null ? '' : String(u.rating));
@@ -209,17 +236,22 @@ function Users({ onForbidden }: { onForbidden: () => void }) {
           head={['닉네임', '이메일', '가입', '판 수', '순위전', '']}
           rows={data.users.map((u) => [
             <>
-              {u.name} {u.guest && <span className="admTag">게스트</span>}
+              {u.name} {u.guest && <span className="admTag">게스트</span>} {u.test && <span className="admTag warn">통계 제외</span>}
             </>,
             u.email ?? '-',
             when(u.createdAt),
             u.played,
             u.rating === null ? '-' : `${u.rating}점 · ${u.tier === null ? `배치 ${u.games}판` : TIERS[u.tier]} · ${u.wins}승 ${u.losses}패`,
-            u.guest ? null : (
-              <button className="admGhost" onClick={() => setRating(u)}>
-                점수 고치기
+            <span className="admBtns">
+              <button className="admGhost" onClick={() => setTest(u)}>
+                {u.test ? '통계에 넣기' : '통계에서 빼기'}
               </button>
-            ),
+              {!u.guest && (
+                <button className="admGhost" onClick={() => setRating(u)}>
+                  점수 고치기
+                </button>
+              )}
+            </span>,
           ])}
         />
       )}

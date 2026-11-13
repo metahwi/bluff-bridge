@@ -18,9 +18,14 @@ export interface Settings {
   freeChat: boolean;
   /** 첫 화면 위에 띄우는 공지. 비우면 띄우지 않는다. */
   notice: string;
+  /**
+   * Cloudflare Web Analytics의 사이트 토큰(32자리). 넣으면 화면에 방문 집계 스크립트를 붙인다. 비우면 붙이지 않는다.
+   * 페이지 소스에 그대로 보이는 공개 값이라 비밀이 아니다.
+   */
+  analyticsToken: string;
 }
 
-export const DEFAULT_SETTINGS: Settings = { botsEnabled: false, botWaitSec: 12, botLevel: 'normal', turnSeconds: 30, freeChat: true, notice: '' };
+export const DEFAULT_SETTINGS: Settings = { botsEnabled: false, botWaitSec: 12, botLevel: 'normal', turnSeconds: 30, freeChat: true, notice: '', analyticsToken: '' };
 
 export const SETTINGS_TABLES = [
   `CREATE TABLE IF NOT EXISTS settings (
@@ -44,6 +49,8 @@ export function normalize(input: Partial<Record<keyof Settings, unknown>>, base:
     turnSeconds: clamp(input.turnSeconds, 10, 120, base.turnSeconds),
     freeChat: typeof input.freeChat === 'boolean' ? input.freeChat : base.freeChat,
     notice: typeof input.notice === 'string' ? input.notice.trim().slice(0, 200) : base.notice,
+    // 토큰 모양이 아니면 받지 않는다(이 값이 스크립트 태그에 들어가므로 엉뚱한 글이 섞이지 않게).
+    analyticsToken: typeof input.analyticsToken === 'string' && /^([a-f0-9]{32})?$/i.test(input.analyticsToken.trim()) ? input.analyticsToken.trim().toLowerCase() : base.analyticsToken,
   };
 }
 

@@ -10,6 +10,8 @@ export interface Me {
   providers: string[];
   /** 관리자가 올린 공지. 없으면 빈 글. */
   notice?: string;
+  /** 방문 집계(Cloudflare Web Analytics) 토큰. 비어 있으면 집계하지 않는다. */
+  analytics?: string;
   records: {
     played: number;
     won: number;

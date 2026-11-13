@@ -3,6 +3,8 @@
 /** 나중에 추가한 열. 이미 있으면 실패하므로 migrate가 하나씩 따로 실행하고 실패는 넘어간다. */
 export const RECORD_ALTERS = [
   'ALTER TABLE matches ADD COLUMN mode TEXT',
+  // 판이 걸린 시간(밀리초). 기록하기 전의 판은 비어 있다.
+  'ALTER TABLE matches ADD COLUMN duration_ms INTEGER',
 ];
 /** 종류를 기록하기 전의 판에 알 수 있는 만큼 종류를 채운다(여러 번 실행해도 된다). */
 export const RECORD_BACKFILL = [
@@ -41,6 +43,8 @@ export interface MatchRecord {
   reason: EndReason;
   /** 판의 종류: friend(친구 방), quick(빠른 매칭), ranked(순위전), bot(봇과). */
   mode?: string;
+  /** 시작부터 끝까지 걸린 시간(밀리초). */
+  durationMs?: number;
   players: { userId: string; name: string; finished: number; lost: number; won: boolean }[];
 }
 
@@ -55,13 +59,13 @@ export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<strin
   try {
     await db.batch([
       db
-        .prepare('INSERT INTO matches (id, room_code, player_count, rounds, reason, ended_at, mode) VALUES (?, ?, ?, ?, ?, ?, ?)')
-        .bind(id, rec.roomCode, rec.players.length, rec.rounds, rec.reason, Date.now(), rec.mode ?? null),
+        .prepare('INSERT INTO matches (id, room_code, player_count, rounds, reason, ended_at, mode, duration_ms) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, rec.roomCode, rec.players.length, rec.rounds, rec.reason, Date.now(), rec.mode ?? null, rec.durationMs ?? null),
       ...players,
     ]);
     return id;
   } catch {
-    // 배포 직후 아직 mode 열이 없는 잠깐 동안에도 판 기록은 남긴다.
+    // 배포 직후 아직 새 열(mode, duration_ms)이 없는 잠깐 동안에도 판 기록은 남긴다.
   }
   await db.batch([
     db

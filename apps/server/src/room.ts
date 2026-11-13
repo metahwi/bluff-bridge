@@ -70,6 +70,8 @@ interface Room {
   bot?: BotLevel;
   /** 봇이 다음 수를 둘 시각. 둘 차례가 아니면 null. */
   botAt?: number | null;
+  /** 이번 판이 시작된 시각. 판이 걸린 시간을 기록하는 데 쓴다. */
+  startedAt?: number;
   /** 한 행동의 제한 시간(밀리초). 방을 만들 때의 관리자 설정. */
   turnMs?: number;
   seats: Seat[];
@@ -232,6 +234,7 @@ export class GameRoom extends DurableObject<Env> {
       this.pendingRecord = {
         roomCode: room.code,
         mode: this.modeOf(room),
+        durationMs: room.startedAt ? Date.now() - room.startedAt : undefined,
         rounds: state.round,
         reason: events.some((e) => e.type === 'forfeit')
           ? 'forfeit'
@@ -295,6 +298,7 @@ export class GameRoom extends DurableObject<Env> {
     const first = Math.floor(rng() * room.seats.length);
     room.game = createGame(room.seats.map((s) => s.name), rulesFor(room.seats.length), first);
     room.status = 'playing';
+    room.startedAt = Date.now();
     room.rankResult = undefined;
     room.events = [];
     room.seq++;

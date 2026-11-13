@@ -26,22 +26,33 @@ interface Live {
   playersInGame: number;
   botsInGame: number;
 }
-type Day = { d: string; players: number; playerMembers: number; playerGuests: number; members: number; guests: number } & Record<ModeKey, number>;
+type Day = { d: string; plays: number; players: number; playerMembers: number; playerGuests: number; members: number; guests: number } & Record<ModeKey, number>;
 /** 고유 인원(한 사람은 한 번만). */
 interface Unique {
   all: number;
   members: number;
   guests: number;
 }
+interface Engagement {
+  gamesPerPlayer: number;
+  gamesPerPlayerToday: number;
+  minutesPerGame: number | null;
+  minutesPerPlayer: number | null;
+  timedGames: number;
+  nextDay: { base: number; back: number };
+  nextDayWeek: { base: number; back: number };
+}
 interface Trends {
+  engagement: Engagement;
   unique: { today: Unique; week: Unique; period: Unique; month: Unique };
   days: Day[];
-  reasons: { reason: string; n: number; rounds: number }[];
+  reasons: { reason: string; n: number; rounds: number; minutes: number | null }[];
   tiers: number[];
   recent: { id: string; endedAt: number; mode: string; rounds: number; reason: string; code: string; players: string }[];
   newest: { name: string; createdAt: string }[];
 }
 interface Totals {
+  testUsers: number;
   members: number;
   guests: number;
   matches: number;
@@ -52,12 +63,15 @@ interface Totals {
 const total = (d: Day) => MODES.reduce((n, m) => n + d[m.key], 0);
 
 /** 오늘 값과 어제 대비 변화. */
-function Kpi({ label, value, before, note }: { label: string; value: number; before?: number; note?: string }) {
-  const diff = before === undefined ? null : value - before;
+function Kpi({ label, value, before, note, unit }: { label: string; value: number | null; before?: number; note?: string; unit?: string }) {
+  const diff = before === undefined || value === null ? null : value - before;
   return (
     <div className="admCard">
       <span>{label}</span>
-      <b>{value.toLocaleString('ko-KR')}</b>
+      <b>
+        {value === null ? '–' : value.toLocaleString('ko-KR')}
+        {value !== null && unit && <small>{unit}</small>}
+      </b>
       <small>
         {diff !== null && (
           <span className={diff > 0 ? 'up' : diff < 0 ? 'down' : ''}>
@@ -227,6 +241,7 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
 
   const L = live.data;
   const T = trends.data;
+  const E = T.engagement;
   const today = T.days.at(-1)!;
   const yesterday = T.days.at(-2) ?? today;
   const STATUS: Record<string, string> = { lobby: '대기실', playing: '게임 중', over: '결과 화면' };
@@ -294,7 +309,7 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
         )}
       </Section>
 
-      <Section title="오늘" note="한국 시간 기준 · 사람 수는 모두 고유 인원(한 사람은 한 번만, 봇 제외)">
+      <Section title="오늘" note={`한국 시간 기준 · 사람 수는 모두 고유 인원(한 사람은 한 번만) · 봇과 점검용 계정 ${totals.data.testUsers.toLocaleString('ko-KR')}개 제외`}>
         <div className="admCards">
           <Kpi label="끝난 판" value={total(today)} before={total(yesterday)} note={`전체 ${totals.data.matches.toLocaleString('ko-KR')}판`} />
           <Kpi label="오늘 플레이한 사람 (DAU)" value={T.unique.today.all} before={yesterday.players} note={`회원 ${T.unique.today.members} · 게스트 ${T.unique.today.guests}`} />
@@ -309,6 +324,27 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
           <Kpi label="받은 의견" value={totals.data.feedback} note="의견 탭에서 확인" />
           <Kpi label="보관 중인 채팅" value={totals.data.chat} note="7일 뒤 자동 삭제" />
         </div>
+      </Section>
+
+      <Section title="얼마나 깊이 하는가" note="최근 14일 · 광고 노출 기회를 가늠하는 숫자">
+        <div className="admCards">
+          <Kpi label="1인당 하루 판 수" value={E.gamesPerPlayer} unit="판" note={`오늘은 ${E.gamesPerPlayerToday}판 · 플레이한 날 기준`} />
+          <Kpi label="한 판 평균 시간" value={E.minutesPerGame} unit="분" note={E.timedGames ? `시간이 기록된 ${E.timedGames}판 기준` : '이번 배포 뒤의 판부터 기록됩니다'} />
+          <Kpi label="1인당 하루 플레이 시간" value={E.minutesPerPlayer} unit="분" note="플레이한 날 기준" />
+          <Kpi
+            label="다음 날 재방문율"
+            value={E.nextDay.base ? Math.round((E.nextDay.back / E.nextDay.base) * 100) : null}
+            unit="%"
+            note={
+              E.nextDay.base
+                ? `그저께 ${E.nextDay.base}명 중 ${E.nextDay.back}명이 어제 다시 함 · 7일 평균 ${E.nextDayWeek.base ? Math.round((E.nextDayWeek.back / E.nextDayWeek.base) * 100) : 0}%`
+                : E.nextDayWeek.base
+                  ? `그저께 플레이한 사람이 없음 · 7일 평균 ${Math.round((E.nextDayWeek.back / E.nextDayWeek.base) * 100)}%`
+                  : '아직 계산할 만큼 기록이 없어요'
+            }
+          />
+        </div>
+        <small>게스트는 브라우저 단위로 세므로, 같은 사람이 기기를 바꾸면 다른 사람으로 잡힙니다. 재방문율은 그만큼 낮게 나올 수 있습니다.</small>
       </Section>
 
       <Section title="최근 14일">
@@ -329,7 +365,7 @@ export function BirdsEye({ onForbidden }: { onForbidden: () => void }) {
           <Rows
             title="판이 끝난 이유"
             empty="최근 14일에 끝난 판이 없어요."
-            rows={T.reasons.map((r) => ({ label: REASONS[r.reason] ?? r.reason, value: r.n, note: `평균 ${r.rounds}턴` }))}
+            rows={T.reasons.map((r) => ({ label: REASONS[r.reason] ?? r.reason, value: r.n, note: `평균 ${r.rounds}턴${r.minutes === null ? '' : ` · ${r.minutes}분`}` }))}
           />
           <Rows title="순위전 티어 분포" empty="아직 배치를 마친 사람이 없어요." rows={TIERS.map((label, i) => ({ label, value: T.tiers[i] ?? 0 }))} />
         </div>

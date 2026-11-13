@@ -85,6 +85,18 @@ export function App() {
     return () => removeEventListener('popstate', onPop);
   }, []);
 
+  // 방문 집계: 관리자가 토큰을 넣어 두었으면 Cloudflare Web Analytics 스크립트를 한 번만 붙인다.
+  // 쿠키를 쓰지 않고, 누가 왔는지가 아니라 몇 번 열렸는지·어디서 왔는지만 모아서 센다.
+  const analytics = me?.analytics ?? '';
+  useEffect(() => {
+    if (!/^[a-f0-9]{32}$/.test(analytics) || document.querySelector('script[data-cf-beacon]')) return;
+    const script = document.createElement('script');
+    script.defer = true;
+    script.src = 'https://static.cloudflareinsights.com/beacon.min.js';
+    script.dataset.cfBeacon = JSON.stringify({ token: analytics });
+    document.head.append(script);
+  }, [analytics]);
+
   // 저장된 닉네임을 입력란에 채운다.
   const savedName = me?.user && me.user.name !== '손님' ? me.user.name : '';
   useEffect(() => {
