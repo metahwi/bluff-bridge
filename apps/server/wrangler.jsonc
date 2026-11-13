@@ -20,6 +20,8 @@
   "d1_databases": [
     { "binding": "DB", "database_name": "bluff-bridge", "database_id": "736528c7-faf8-4075-a4d7-2db51d1f3549" }
   ],
+  // 매일 18:00 UTC(한국 시간 새벽 3시)에 보관 기간이 지난 채팅을 지운다.
+  "triggers": { "crons": ["0 18 * * *"] },
   "durable_objects": {
     "bindings": [
       { "name": "ROOM", "class_name": "GameRoom" },

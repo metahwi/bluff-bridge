@@ -6,6 +6,7 @@ import { createRoom, roomStub } from './codes.ts';
 import { Matchmaker } from './matchmaker.ts';
 import { RECORD_TABLES, getRecords } from './records.ts';
 import { GameRoom } from './room.ts';
+import { FEEDBACK_MAX, FEEDBACK_MIN, STORE_TABLES, purgeOldChat, recentChat, recentFeedback, saveFeedback } from './store.ts';
 
 export interface Env {
   ROOM: DurableObjectNamespace<GameRoom>;
@@ -60,12 +61,47 @@ app.post('/api/admin/migrate', async (c) => {
   if (!token || c.req.header('Authorization') !== `Bearer ${token}`) return c.json({ error: 'forbidden' }, 403);
   const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(getAuth(c.env, c.req.raw).options);
   await runMigrations();
-  await c.env.DB.batch(RECORD_TABLES.map((sql) => c.env.DB.prepare(sql)));
+  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES].map((sql) => c.env.DB.prepare(sql)));
   return c.json({
     created: toBeCreated.map((t) => t.table),
     altered: toBeAdded.map((t) => t.table),
     records: 'ok',
   });
+});
+
+/** 의견 보내기. 가입한 회원만 보낼 수 있다(게스트는 안 됨). */
+app.post('/api/feedback', async (c) => {
+  const user = await getUser(c.env, c.req.raw);
+  if (!user || user.isAnonymous) return c.json({ error: '로그인한 뒤에 의견을 보낼 수 있어요.' }, 401);
+  const body = (await c.req.json().catch(() => null)) as { text?: unknown; page?: unknown; mode?: unknown } | null;
+  const text = typeof body?.text === 'string' ? body.text.replace(/\r\n?/g, '\n').trim() : '';
+  if ([...text].length < FEEDBACK_MIN) return c.json({ error: '조금만 더 자세히 적어 주세요.' }, 400);
+  if ([...text].length > FEEDBACK_MAX) return c.json({ error: `의견은 ${FEEDBACK_MAX}자까지 보낼 수 있어요.` }, 400);
+  const saved = await saveFeedback(c.env.DB, {
+    userId: user.id,
+    name: user.name,
+    text,
+    page: typeof body?.page === 'string' ? body.page : undefined,
+    mode: typeof body?.mode === 'string' ? body.mode : undefined,
+    agent: c.req.header('User-Agent'),
+  });
+  if (!saved) return c.json({ error: '오늘은 의견을 충분히 보내 주셨어요. 내일 다시 보내 주세요.' }, 429);
+  return c.json({ ok: true });
+});
+
+/** 운영자용: 받은 의견과 보관 중인 채팅을 본다. ADMIN_TOKEN이 있어야 한다. */
+const isAdmin = (env: Env, header: string | undefined) => !!env.ADMIN_TOKEN && header === `Bearer ${env.ADMIN_TOKEN}`;
+app.get('/api/admin/feedback', async (c) => {
+  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
+  return c.json({ feedback: await recentFeedback(c.env.DB) });
+});
+app.get('/api/admin/chat', async (c) => {
+  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
+  return c.json({ chat: await recentChat(c.env.DB, c.req.query('room')?.toUpperCase() ?? null) });
+});
+app.post('/api/admin/purge-chat', async (c) => {
+  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
+  return c.json({ deleted: await purgeOldChat(c.env.DB) });
 });
 
 app.post('/api/rooms', async (c) => {
@@ -104,5 +140,11 @@ app.get('/ws/room/:code', async (c) => {
   return roomStub(c.env, code).fetch(new Request(target, c.req.raw));
 });
 
-export default app;
+export default {
+  fetch: app.fetch,
+  /** 매일 한 번(wrangler.jsonc의 crons) 보관 기간이 지난 채팅을 지운다. */
+  async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    ctx.waitUntil(purgeOldChat(env.DB).then((n) => console.log(`오래된 채팅 ${n}줄 삭제`)));
+  },
+} satisfies ExportedHandler<Env>;
 export { GameRoom, Matchmaker };

@@ -121,6 +121,12 @@ export function WorkHome(p: WorkHomeProps) {
           )}
           <tr>
             <th>{row++}</th>
+            <td className="head">계정</td>
+            <td>{p.me.user && !p.me.user.isAnonymous ? `${p.me.user.name} (회원)` : '게스트'}</td>
+            <td className="note">가입·로그인·탈퇴는 옵션에서 업무 모드를 끈 첫 화면 아래에서 할 수 있습니다.</td>
+          </tr>
+          <tr>
+            <th>{row++}</th>
             <td colSpan={3} />
           </tr>
           <tr>

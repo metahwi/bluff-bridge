@@ -84,9 +84,9 @@ function connect(code: string, name: string, cookie: string): Promise<Client> {
 
 const send = (c: Client, m: ClientMessage) => c.ws.send(JSON.stringify(m));
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
-async function until(cond: () => boolean, what: string, ms = 10_000): Promise<void> {
+async function until(cond: () => boolean | Promise<boolean>, what: string, ms = 10_000): Promise<void> {
   const end = Date.now() + ms;
-  while (!cond()) {
+  while (!(await cond())) {
     if (Date.now() > end) throw new Error(`시간 초과: ${what}`);
     await sleep(20);
   }
@@ -240,6 +240,72 @@ const afterForfeit = (await me(cookieB)).records!;
 check(afterForfeit.played === 2 && afterForfeit.recent[0]?.reason === 'forfeit' && afterForfeit.recent[0].won, '기권 판이 전적에 기록되지 않음');
 
 b.ws.close();
+// 7-1. 채팅은 서버에 보관된다(운영자만 볼 수 있다)
+const admin = { Authorization: `Bearer ${adminToken}` };
+check((await fetch(`${base}/api/admin/chat?room=${code}`)).status === 403, '토큰 없이 채팅 기록이 보임');
+type ChatRow = { name: string; text: string | null; preset: number | null };
+let stored: ChatRow[] = [];
+await until(async () => {
+  stored = ((await (await fetch(`${base}/api/admin/chat?room=${code}`, { headers: admin })).json()) as { chat: ChatRow[] }).chat;
+  return stored.length >= 2;
+}, '채팅 보관');
+check(stored.some((m) => m.name === '비' && m.text === '안녕 ♥♥ (번호)') && stored.some((m) => m.name === '씨' && m.preset === 1), `보관된 채팅이 다름: ${JSON.stringify(stored)}`);
+const purged = (await (await fetch(`${base}/api/admin/purge-chat`, { method: 'POST', headers: admin })).json()) as { deleted: number };
+check(purged.deleted === 0, `방금 쓴 채팅이 지워짐: ${purged.deleted}`);
+
+// 7-2. 회원가입: 게스트(비)가 이메일로 가입하면 회원이 되고, 게스트 때의 전적이 그대로 옮겨진다
+async function authPost(path: string, body: unknown, cookie = ''): Promise<{ ok: boolean; status: number; cookie: string; text: string }> {
+  const res = await fetch(`${base}/api/auth/${path}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Origin: base, ...(cookie && { Cookie: cookie }) },
+    body: JSON.stringify(body),
+  });
+  const jar = new Map(cookie.split('; ').filter(Boolean).map((c) => [c.split('=')[0]!, c] as const));
+  for (const c of res.headers.getSetCookie()) {
+    const pair = c.split(';')[0]!;
+    if (/max-age=0/i.test(c)) jar.delete(pair.split('=')[0]!);
+    else jar.set(pair.split('=')[0]!, pair);
+  }
+  return { ok: res.ok, status: res.status, cookie: [...jar.values()].join('; '), text: await res.text() };
+}
+const email = `e2e-${Date.now()}@example.com`;
+const password = 'hippo-bridge-1234';
+const guestB = (await me(cookieB)).user!;
+check((await authPost('sign-up/email', { name: '비', email, password: 'short' }, cookieB)).ok === false, '짧은 비밀번호로 가입됨');
+const signedUp = await authPost('sign-up/email', { name: '비', email, password, agreedAt: Date.now() }, cookieB);
+check(signedUp.ok, `회원가입 실패: ${signedUp.status} ${signedUp.text}`);
+const member = await me(signedUp.cookie);
+check(member.user?.isAnonymous === false && member.user.id !== guestB.id, `가입 후에도 게스트임: ${JSON.stringify(member.user)}`);
+check(member.records?.played === 2, `게스트 때의 전적이 옮겨지지 않음: ${member.records?.played}`);
+check((await authPost('sign-up/email', { name: '또', email, password }, '')).ok === false, '같은 이메일로 두 번 가입됨');
+
+// 7-3. 로그인: 틀린 비밀번호는 거절, 맞으면 같은 계정으로 들어간다
+check((await authPost('sign-in/email', { email, password: 'wrong-password-1' })).ok === false, '틀린 비밀번호로 로그인됨');
+const signedIn = await authPost('sign-in/email', { email, password });
+check(signedIn.ok && (await me(signedIn.cookie)).user?.id === member.user?.id, `로그인 실패: ${signedIn.status} ${signedIn.text}`);
+
+// 7-4. 의견 보내기: 회원만, 하루 다섯 번까지
+const feedback = (text: string, cookie: string) =>
+  fetch(`${base}/api/feedback`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base, Cookie: cookie }, body: JSON.stringify({ text, page: 'home', mode: 'game' }) });
+check((await feedback('게스트가 보내는 의견입니다', cookieA)).status === 401, '게스트가 의견을 보냄');
+check((await feedback('짧음', signedIn.cookie)).status === 400, '너무 짧은 의견이 저장됨');
+const note = `점검용 의견 ${Date.now()}`;
+check((await feedback(note, signedIn.cookie)).status === 200, '회원의 의견이 저장되지 않음');
+for (let i = 0; i < 4; i++) await feedback(`점검용 의견 반복 ${i}`, signedIn.cookie);
+check((await feedback('여섯 번째 의견입니다', signedIn.cookie)).status === 429, '하루 한도를 넘겨도 의견이 저장됨');
+const inbox = ((await (await fetch(`${base}/api/admin/feedback`, { headers: admin })).json()) as { feedback: { text: string; name: string }[] }).feedback;
+check(inbox.some((x) => x.text === note && x.name === '비'), '보낸 의견이 운영자 목록에 없음');
+check((await fetch(`${base}/api/admin/feedback`)).status === 403, '토큰 없이 의견 목록이 보임');
+
+// 7-5. 탈퇴: 계정과 내가 보낸 채팅·의견이 지워지고, 그 이메일로는 더 로그인할 수 없다
+check((await authPost('delete-user', { password: 'wrong-password-1' }, signedIn.cookie)).ok === false, '틀린 비밀번호로 탈퇴됨');
+const left = await authPost('delete-user', { password }, signedIn.cookie);
+check(left.ok, `탈퇴 실패: ${left.status} ${left.text}`);
+check((await authPost('sign-in/email', { email, password })).ok === false, '탈퇴한 계정으로 로그인됨');
+const afterLeave = ((await (await fetch(`${base}/api/admin/feedback`, { headers: admin })).json()) as { feedback: { text: string }[] }).feedback;
+check(!afterLeave.some((x) => x.text === note), '탈퇴했는데 의견이 남아 있음');
+console.log('회원가입 · 로그인 · 의견 · 탈퇴 확인');
+
 // 8. 빠른 매칭: 두 명이 대기열에 서면 같은 방 코드를 받고, 준비 없이 바로 시작한다
 /** got: 지금까지 받은 메시지, done: 연결이 닫힐 때 끝나는 약속. */
 function queue(cookie: string): { got: MatchMessage[]; done: Promise<MatchMessage[]> } {

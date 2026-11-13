@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import { NAME_MAX, ROOM_CODE } from '@bluff-bridge/protocol/types';
 import { CookieError, authClient, ensureGuest, inKakaoTalk, openInBrowser, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
+import { Account } from './Account.tsx';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
 import { RULES, rulesFor } from '@bluff-bridge/engine';
@@ -266,34 +267,14 @@ export function App() {
         </ol>
       </section>
 
-      <section className="panel account">
-        {member ? (
-          <div className="row">
-            <span>{user.name} 님으로 로그인됨</span>
-            <button className="ghost" onClick={logout}>
-              로그아웃
-            </button>
-          </div>
-        ) : me.providers.length > 0 ? (
-          <>
-            <small>
-              로그인하면 다른 기기에서도 전적이 유지돼요.
-              {user ? ' 지금까지의 전적도 그대로 옮겨져요.' : ''}
-            </small>
-            <div className="row">
-              {me.providers.map((p) => (
-                <button key={p} className="ghost" onClick={() => socialLogin(p)}>
-                  {PROVIDER_LABEL[p] ?? p}
-                </button>
-              ))}
-            </div>
-          </>
-        ) : (
-          <small>지금은 게스트로 플레이해요. 전적은 이 브라우저에 연결돼요.</small>
-        )}
-      </section>
+      <Account me={me} draftName={draft.trim()} reload={reload} />
 
       <Records me={me} />
+
+      <footer className="links">
+        <a href="/terms">이용약관</a>
+        <a href="/privacy">개인정보 처리방침</a>
+      </footer>
     </main>
   );
 }

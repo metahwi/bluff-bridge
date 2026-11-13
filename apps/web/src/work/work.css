@@ -197,3 +197,7 @@
 [data-mode='work'] .replyOrder li.next { box-shadow: none; outline: 2px solid var(--wb-green); outline-offset: -1px; }
 [data-mode='work'] .replyOrder li.next span { color: #b3261e; }
 [data-mode='work'] .replyOrder small { text-align: left; }
+/* 업무 모드의 의견 보내기·약관 */
+[data-mode='work'] .feedback textarea { border: 1px solid #b5b5b5; background: #fff; font-size: 13px; }
+[data-mode='work'] .chatNote { color: var(--wb-muted); }
+[data-mode='work'] main.legal article { margin: 0; }

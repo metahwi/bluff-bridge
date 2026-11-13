@@ -88,3 +88,44 @@ export function socialLogin(provider: string): void {
   // 로그인 후 지금 보던 주소(초대 링크 포함)로 돌아온다.
   void authClient.signIn.social({ provider, callbackURL: location.pathname });
 }
+
+/** 로그인 라이브러리가 돌려주는 오류를 우리말 안내로 바꾼다. */
+function authMessage(error: { code?: string; message?: string; status?: number }): string {
+  switch (error.code) {
+    case 'USER_ALREADY_EXISTS':
+    case 'USER_ALREADY_EXISTS_USE_ANOTHER_EMAIL':
+      return '이미 가입한 이메일이에요. 로그인해 주세요.';
+    case 'INVALID_EMAIL_OR_PASSWORD':
+    case 'INVALID_PASSWORD':
+      return '이메일이나 비밀번호가 맞지 않아요.';
+    case 'INVALID_EMAIL':
+      return '이메일 주소를 확인해 주세요.';
+    case 'PASSWORD_TOO_SHORT':
+      return '비밀번호는 8자 이상이어야 해요.';
+    case 'PASSWORD_TOO_LONG':
+      return '비밀번호가 너무 길어요.';
+    case 'SESSION_EXPIRED':
+      return '로그인한 지 오래됐어요. 비밀번호를 넣거나, 로그아웃했다가 다시 로그인한 뒤 시도해 주세요.';
+    default:
+      return error.status === 429 ? '시도가 너무 많아요. 잠시 뒤에 다시 해 주세요.' : '처리하지 못했어요. 잠시 뒤에 다시 시도해 주세요.';
+  }
+}
+
+/** 이메일로 가입한다. 게스트였다면 그동안의 전적이 새 계정으로 옮겨진다. */
+export async function emailSignUp(name: string, email: string, password: string): Promise<void> {
+  // agreedAt: 가입 화면에서 약관 동의와 만 14세 이상 확인에 체크한 시각
+  const body = { name: name.trim(), email: email.trim(), password, agreedAt: Date.now() };
+  const { error } = await authClient.signUp.email(body as Parameters<typeof authClient.signUp.email>[0]);
+  if (error) throw new Error(authMessage(error));
+}
+
+export async function emailSignIn(email: string, password: string): Promise<void> {
+  const { error } = await authClient.signIn.email({ email: email.trim(), password });
+  if (error) throw new Error(authMessage(error));
+}
+
+/** 회원 탈퇴. 이메일로 가입한 사람은 비밀번호로 본인임을 확인한다. */
+export async function deleteAccount(password: string): Promise<void> {
+  const { error } = await authClient.deleteUser(password ? { password } : {});
+  if (error) throw new Error(authMessage(error));
+}

@@ -15,6 +15,7 @@ import type { RoomView, ServerMessage } from '@bluff-bridge/protocol';
 import type { Env } from './index.ts';
 import { cleanChat } from './chat.ts';
 import { saveMatch } from './records.ts';
+import { saveChat } from './store.ts';
 import type { MatchRecord } from './records.ts';
 
 interface Seat {
@@ -350,6 +351,12 @@ export class GameRoom extends DurableObject<Env> {
           out.text = text;
         }
         this.lastChat.set(att.pid, now);
+        // 신고·분쟁 확인용으로 일정 기간 보관한다. 저장이 실패해도 채팅 전달은 막지 않는다.
+        this.ctx.waitUntil(
+          saveChat(this.env.DB, { roomCode: room.code, userId: att.pid, name: seat.name, text: out.text, preset: out.preset, quickMatch: !!room.auto }).catch((e) =>
+            console.error('채팅 저장 실패', e),
+          ),
+        );
         for (const peer of this.ctx.getWebSockets()) {
           const who = peer.deserializeAttachment() as Attachment | null;
           if (who && room.seats.some((s) => s.pid === who.pid)) this.send(peer, out);

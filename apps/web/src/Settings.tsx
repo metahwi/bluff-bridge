@@ -2,6 +2,7 @@ import { useEffect, useRef, useState, useSyncExternalStore } from 'react';
 import { Sprite } from './pixel.tsx';
 import { settings, useChat, useGore, useWork } from './settings.ts';
 import { sound } from './sound.ts';
+import { Feedback } from './Feedback.tsx';
 
 const GEAR = ['...ooo...', '.o.ooo.o.', '.ooooooo.', 'ooo...ooo', 'ooo...ooo', 'ooo...ooo', '.ooooooo.', '.o.ooo.o.', '...ooo...'] as const;
 
@@ -84,6 +85,7 @@ export function SettingsButton({ floating = false }: { floating?: boolean }) {
               <Toggle label="피 연출" hint="끄면 덜 잔인하게 보여요(어린이용)." on={gore} onChange={(on) => settings.setGore(on)} />
             </>
           )}
+          <Feedback work={work} />
         </div>
       )}
     </div>

@@ -1,7 +1,9 @@
 import { betterAuth } from 'better-auth';
 import { anonymous } from 'better-auth/plugins';
 import { NAME_MAX } from '@bluff-bridge/protocol';
+import { hashPassword, verifyPassword } from './password.ts';
 import { moveRecords } from './records.ts';
+import { eraseUser, moveChat } from './store.ts';
 import type { Env } from './index.ts';
 
 export interface SessionUser {
@@ -29,6 +31,27 @@ function build(env: Env, baseURL: string) {
     trustedOrigins: env.BETTER_AUTH_URL
       ? []
       : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'http://127.0.0.1:8787'],
+    // 이메일 + 비밀번호 가입. 메일을 보내는 기능이 아직 없어서 이메일 인증과 비밀번호 재설정은 하지 않는다.
+    emailAndPassword: {
+      enabled: true,
+      minPasswordLength: 8,
+      maxPasswordLength: 128,
+      autoSignIn: true,
+      password: { hash: hashPassword, verify: verifyPassword },
+    },
+    user: {
+      additionalFields: {
+        /** 가입 화면에서 약관·개인정보 처리방침에 동의하고 만 14세 이상임을 확인한 시각. */
+        agreedAt: { type: 'number', required: false },
+      },
+      // 회원 탈퇴. 계정을 지우기 전에 그 사람의 채팅·의견을 지우고 전적과의 연결을 끊는다.
+      deleteUser: {
+        enabled: true,
+        beforeDelete: async (user) => {
+          await eraseUser(env.DB, user.id);
+        },
+      },
+    },
     socialProviders: {
       ...(providers.includes('google') && {
         google: { clientId: env.GOOGLE_CLIENT_ID!, clientSecret: env.GOOGLE_CLIENT_SECRET! },
@@ -51,9 +74,10 @@ function build(env: Env, baseURL: string) {
       anonymous({
         emailDomainName: 'guest.invalid',
         generateName: () => '손님',
-        // 게스트가 소셜 로그인을 하면 게스트 때의 전적을 새 계정으로 옮긴다.
+        // 게스트가 가입하거나 로그인하면 게스트 때의 전적과 채팅 기록을 그 계정으로 옮긴다.
         onLinkAccount: async ({ anonymousUser, newUser }) => {
           await moveRecords(env.DB, anonymousUser.user.id, newUser.user.id);
+          await moveChat(env.DB, anonymousUser.user.id, newUser.user.id);
         },
       }),
     ],
