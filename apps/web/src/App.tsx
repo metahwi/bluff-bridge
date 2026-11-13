@@ -206,6 +206,11 @@ export function App() {
     <main className="home">
       <SettingsButton floating />
       <h1 className="logo">하마하마</h1>
+      {me.notice && (
+        <p className="notice homeNotice" role="status">
+          {me.notice}
+        </p>
+      )}
       <StageView state={HERO} />
 
       <section className="panel form">

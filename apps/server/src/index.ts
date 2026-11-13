@@ -1,13 +1,14 @@
 import { Hono } from 'hono';
-import { getMigrations } from 'better-auth/db/migration';
 import { ROOM_CODE } from '@bluff-bridge/protocol';
+import { admin } from './admin.ts';
 import { enabledProviders, getAuth, getUser } from './auth.ts';
+import { getSettings } from './settings.ts';
 import { createRoom, roomStub } from './codes.ts';
 import { Matchmaker } from './matchmaker.ts';
-import { RANK_TABLES, getRank, topRanks } from './ranking.ts';
-import { RECORD_TABLES, getRecords } from './records.ts';
+import { getRank, topRanks } from './ranking.ts';
+import { getRecords } from './records.ts';
 import { GameRoom } from './room.ts';
-import { FEEDBACK_MAX, FEEDBACK_MIN, STORE_TABLES, purgeOldChat, recentChat, recentFeedback, saveFeedback } from './store.ts';
+import { FEEDBACK_MAX, FEEDBACK_MIN, purgeOldChat, saveFeedback } from './store.ts';
 
 export interface Env {
   ROOM: DurableObjectNamespace<GameRoom>;
@@ -19,6 +20,8 @@ export interface Env {
   BETTER_AUTH_URL?: string;
   /** DB 테이블 생성(/api/admin/migrate)을 허용하는 비밀 값. */
   ADMIN_TOKEN?: string;
+  /** 관리자 페이지(/admin)에 로그인하는 암호. 없으면 관리자 페이지에 들어갈 수 없다. */
+  ADMIN_PASSWORD?: string;
   GOOGLE_CLIENT_ID?: string;
   GOOGLE_CLIENT_SECRET?: string;
   KAKAO_CLIENT_ID?: string;
@@ -52,25 +55,16 @@ app.get('/api/me', async (c) => {
   return c.json({
     user,
     providers: enabledProviders(c.env),
+    // 관리자가 올린 공지(없으면 빈 글).
+    notice: (await getSettings(c.env.DB)).notice,
     records: user ? await getRecords(c.env.DB, user.id) : null,
     // 순위전은 회원만 한다.
     rank: user && !user.isAnonymous ? await getRank(c.env.DB, user.id) : null,
   });
 });
 
-/** DB 테이블을 만든다. 로컬에서는 처음 한 번, 운영에서는 배포할 때 실행한다. */
-app.post('/api/admin/migrate', async (c) => {
-  const token = c.env.ADMIN_TOKEN;
-  if (!token || c.req.header('Authorization') !== `Bearer ${token}`) return c.json({ error: 'forbidden' }, 403);
-  const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(getAuth(c.env, c.req.raw).options);
-  await runMigrations();
-  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES, ...RANK_TABLES].map((sql) => c.env.DB.prepare(sql)));
-  return c.json({
-    created: toBeCreated.map((t) => t.table),
-    altered: toBeAdded.map((t) => t.table),
-    records: 'ok',
-  });
-});
+// 관리자 페이지용 API(/api/admin/*)는 admin.ts에 있다.
+app.route('/api/admin', admin);
 
 /** 의견 보내기. 가입한 회원만 보낼 수 있다(게스트는 안 됨). */
 app.post('/api/feedback', async (c) => {
@@ -92,24 +86,9 @@ app.post('/api/feedback', async (c) => {
   return c.json({ ok: true });
 });
 
-/** 운영자용: 받은 의견과 보관 중인 채팅을 본다. ADMIN_TOKEN이 있어야 한다. */
-const isAdmin = (env: Env, header: string | undefined) => !!env.ADMIN_TOKEN && header === `Bearer ${env.ADMIN_TOKEN}`;
-app.get('/api/admin/feedback', async (c) => {
-  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
-  return c.json({ feedback: await recentFeedback(c.env.DB) });
-});
-app.get('/api/admin/chat', async (c) => {
-  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
-  return c.json({ chat: await recentChat(c.env.DB, c.req.query('room')?.toUpperCase() ?? null) });
-});
-app.post('/api/admin/purge-chat', async (c) => {
-  if (!isAdmin(c.env, c.req.header('Authorization'))) return c.json({ error: 'forbidden' }, 403);
-  return c.json({ deleted: await purgeOldChat(c.env.DB) });
-});
-
 app.post('/api/rooms', async (c) => {
   if (!(await getUser(c.env, c.req.raw))) return c.json({ error: '먼저 닉네임을 정해 주세요.' }, 401);
-  const code = await createRoom(c.env);
+  const code = await createRoom(c.env, { turnMs: (await getSettings(c.env.DB)).turnSeconds * 1000 });
   if (code) return c.json({ code });
   return c.json({ error: '방을 만들지 못했어요. 다시 시도해 주세요.' }, 503);
 });

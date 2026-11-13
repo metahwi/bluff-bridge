@@ -1,4 +1,4 @@
-import { StrictMode } from 'react';
+import { StrictMode, Suspense, lazy } from 'react';
 import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { StageDemo } from './stage/StageDemo.tsx';
@@ -26,6 +26,21 @@ const demo = import.meta.env.DEV ? new URLSearchParams(location.search).get('sta
 // 이용약관(/terms)과 개인정보 처리방침(/privacy)
 const legal = location.pathname === '/terms' ? 'terms' : location.pathname === '/privacy' ? 'privacy' : null;
 
+// 관리자 페이지(/admin). 게임을 하는 사람은 받지 않도록 따로 떼어 불러온다.
+const Admin = location.pathname.replace(/\/$/, '') === '/admin' ? lazy(() => import('./admin/Admin.tsx')) : null;
+
 createRoot(document.getElementById('root')!).render(
-  <StrictMode>{legal ? <Legal page={legal} /> : demo ? <StageDemo mode={demo} /> : <App />}</StrictMode>,
+  <StrictMode>
+    {Admin ? (
+      <Suspense fallback={null}>
+        <Admin />
+      </Suspense>
+    ) : legal ? (
+      <Legal page={legal} />
+    ) : demo ? (
+      <StageDemo mode={demo} />
+    ) : (
+      <App />
+    )}
+  </StrictMode>,
 );

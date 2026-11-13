@@ -2,6 +2,7 @@ import { DurableObject } from 'cloudflare:workers';
 import type { MatchMessage } from '@bluff-bridge/protocol';
 import { createRoom } from './codes.ts';
 import type { Env } from './index.ts';
+import { getSettings } from './settings.ts';
 
 type Mode = 'quick' | 'ranked';
 
@@ -91,7 +92,8 @@ export class Matchmaker extends DurableObject<Env> {
     // 방을 만드는 동안(await) 다른 요청이 끼어들 수 있으므로 먼저 둘 다 표시해 둔다.
     a.serializeAttachment({ ...x, matched: true } satisfies Attachment);
     b.serializeAttachment({ ...y, matched: true } satisfies Attachment);
-    const code = await createRoom(this.env, { auto: true, reserved: [x.uid, y.uid], ranked: x.mode === 'ranked' });
+    const turnMs = (await getSettings(this.env.DB)).turnSeconds * 1000;
+    const code = await createRoom(this.env, { auto: true, reserved: [x.uid, y.uid], ranked: x.mode === 'ranked', turnMs });
     const msg: MatchMessage = code ? { t: 'matched', code } : { t: 'error', message: '방을 만들지 못했어요. 다시 시도해 주세요.' };
     this.finish(a, msg);
     this.finish(b, msg);
@@ -128,11 +130,35 @@ export class Matchmaker extends DurableObject<Env> {
     const partner = this.partnerFor(me, now);
     if (partner) return this.pair(partner.ws, ws);
     this.send(ws, { t: 'waiting' });
-    // 순위전: 점수 차 때문에 아직 못 만난 사람들이 있으면, 범위가 넓어질 때 다시 본다.
-    if (me.mode === 'ranked' && this.waiting('ranked').length >= 2) await this.ctx.storage.setAlarm(now + STEP_MS);
+    await this.arm();
   }
 
-  /** 순위전 대기열을 다시 훑는다. 오래 기다린 사람부터 짝을 찾아 준다. */
+  /** 사람을 못 만난 빠른 매칭 대기자에게 봇 방을 만들어 준다. */
+  private async seatBot(ws: WebSocket, att: Attachment): Promise<void> {
+    const settings = await getSettings(this.env.DB);
+    ws.serializeAttachment({ ...att, matched: true } satisfies Attachment);
+    const code = await createRoom(this.env, { auto: true, reserved: [att.uid], bot: settings.botLevel, turnMs: settings.turnSeconds * 1000 });
+    this.finish(ws, code ? { t: 'matched', code } : { t: 'error', message: '방을 만들지 못했어요. 다시 시도해 주세요.' });
+  }
+
+  /**
+   * 다음에 대기열을 다시 볼 시각을 예약한다.
+   *  - 순위전 대기자가 둘 이상이면 점수 범위가 넓어지는 5초 뒤
+   *  - 봇이 켜져 있고 빠른 매칭 대기자가 있으면, 가장 오래 기다린 사람이 봇을 만날 시각
+   */
+  private async arm(): Promise<void> {
+    const now = Date.now();
+    const times: number[] = [];
+    if (this.waiting('ranked').length >= 2) times.push(now + STEP_MS);
+    const quick = this.waiting('quick');
+    if (quick.length) {
+      const settings = await getSettings(this.env.DB);
+      if (settings.botsEnabled) times.push(Math.max(now + 200, quick[0]!.att.since + settings.botWaitSec * 1000));
+    }
+    if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
+  }
+
+  /** 대기열을 다시 훑는다. 순위전은 오래 기다린 사람부터 짝을 찾고, 빠른 매칭은 오래 기다린 사람에게 봇을 붙인다. */
   override async alarm(): Promise<void> {
     const now = Date.now();
     for (const { ws, att } of this.waiting('ranked')) {
@@ -141,7 +167,14 @@ export class Matchmaker extends DurableObject<Env> {
       const partner = this.partnerFor(att, now);
       if (partner) await this.pair(ws, partner.ws);
     }
-    if (this.waiting('ranked').length >= 2) await this.ctx.storage.setAlarm(Date.now() + STEP_MS);
+    // 빠른 매칭: 봇이 켜져 있으면, 정해진 시간 넘게 기다린 사람에게 봇을 붙인다.
+    const settings = await getSettings(this.env.DB);
+    if (settings.botsEnabled) {
+      for (const { ws, att } of this.waiting('quick')) {
+        if (Date.now() - att.since >= settings.botWaitSec * 1000) await this.seatBot(ws, att);
+      }
+    }
+    await this.arm();
   }
 
   // 닫히면 런타임이 목록에서 빼 준다.

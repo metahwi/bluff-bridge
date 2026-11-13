@@ -8,6 +8,8 @@ export interface Me {
   user: { id: string; name: string; isAnonymous: boolean } | null;
   /** 서버에 키가 등록된 소셜 로그인 ('google', 'kakao'). */
   providers: string[];
+  /** 관리자가 올린 공지. 없으면 빈 글. */
+  notice?: string;
   records: {
     played: number;
     won: number;

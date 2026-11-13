@@ -1,8 +1,10 @@
 import { DurableObject } from 'cloudflare:workers';
 import {
   GameError,
+  botAction,
   createGame,
   forfeit,
+  pending,
   reduce,
   rulesFor,
   timeout,
@@ -17,6 +19,8 @@ import type { Env } from './index.ts';
 import { cleanChat } from './chat.ts';
 import { saveMatch } from './records.ts';
 import { saveChat } from './store.ts';
+import { BOT_LEVELS, BOT_NAMES, getSettings } from './settings.ts';
+import type { BotLevel } from './settings.ts';
 import type { MatchRecord } from './records.ts';
 
 interface Seat {
@@ -32,6 +36,8 @@ interface Seat {
    * game.players의 번호와 같아야 해서 자리를 지우지 않고 이 표시만 해 둔다.
    */
   left?: boolean;
+  /** 사람이 아니라 서버가 두는 봇. 접속이 없고, 자기 차례가 오면 서버가 대신 둔다. */
+  bot?: boolean;
 }
 
 /** 기권하고 돌아오지 않은 자리. 다음 판에는 끼지 않는다. */
@@ -42,7 +48,7 @@ const absent = (s: Seat) => !!s.left && s.offlineSince !== null;
  * 자리 번호가 game.players의 번호와 같아야 하므로, 남아 있는 사람이 있는 한 그대로 둔다
  * (다음 판을 시작할 때 start가 빼 준다).
  */
-const held = (room: Room, s: Seat) => !!s.left && room.status !== 'lobby' && room.seats.some((x) => x.offlineSince === null);
+const held = (room: Room, s: Seat) => !!s.left && room.status !== 'lobby' && room.seats.some((x) => x.offlineSince === null && !x.bot);
 
 interface Room {
   code: string;
@@ -55,6 +61,12 @@ interface Room {
   rankResult?: RankChange[];
   /** 빠른 매칭 방: 이 계정들만 들어올 수 있다. */
   reserved?: string[];
+  /** 사람이 들어오면 이 난이도의 봇이 상대로 앉는다. */
+  bot?: BotLevel;
+  /** 봇이 다음 수를 둘 시각. 둘 차례가 아니면 null. */
+  botAt?: number | null;
+  /** 한 행동의 제한 시간(밀리초). 방을 만들 때의 관리자 설정. */
+  turnMs?: number;
   seats: Seat[];
   /** 실제 주사위 눈이 들어 있는 전체 상태. 이 객체는 절대 그대로 내보내지 않는다. */
   game: GameState | null;
@@ -120,12 +132,15 @@ export class GameRoom extends DurableObject<Env> {
         console.error('전적 저장 실패', e);
       }
     }
-    if (room.seats.length === 0) return this.destroy();
+    // 사람이 한 명도 남지 않았으면(봇만 남았으면) 방을 닫는다.
+    if (!room.seats.some((s) => !s.bot)) return this.destroy();
+    this.planBot(room);
     this.room = room;
     await this.ctx.storage.put('room', room);
 
     const times: number[] = [];
     if (room.status === 'playing' && room.deadline !== null) times.push(room.deadline);
+    if (room.botAt) times.push(room.botAt);
     for (const s of room.seats) {
       if (s.offlineSince !== null && !held(room, s)) times.push(s.offlineSince + GRACE_MS);
     }
@@ -147,6 +162,7 @@ export class GameRoom extends DurableObject<Env> {
         ready: s.ready,
         rematch: s.rematch,
         online: s.offlineSince === null,
+        bot: !!s.bot,
       })),
       me,
       game: room.game ? viewFor(room.game, me) : null,
@@ -204,8 +220,39 @@ export class GameRoom extends DurableObject<Env> {
     } else if (before?.phase === 'respond' && result.state.phase === 'respond' && before.round === result.state.round) {
       // 여럿이 응답하는 동안에는 제한 시간을 새로 주지 않는다(한 명이 고를 때마다 늘어나지 않게).
     } else {
-      room.deadline = Date.now() + TURN_MS;
+      room.deadline = Date.now() + (room.turnMs ?? TURN_MS);
     }
+  }
+
+  /** 지금 둘 차례인 봇의 자리 번호. 없으면 -1. */
+  private botToMove(room: Room): number {
+    if (room.status !== 'playing' || !room.game) return -1;
+    return pending(room.game).find((i) => room.seats[i]?.bot) ?? -1;
+  }
+
+  /**
+   * 봇이 둘 차례면 언제 둘지 정한다. 사람처럼 잠깐 뜸을 들인다: 굴리기는 빨리, 선언과 응답은 조금 더.
+   * 방금 누군가 하마에게 먹혔으면 화면의 연출이 끝날 때까지 더 기다린다.
+   */
+  private planBot(room: Room): void {
+    if (this.botToMove(room) < 0) {
+      room.botAt = null;
+      return;
+    }
+    if (room.botAt) return;
+    const phase = room.game!.phase;
+    const [min, span] = phase === 'roll' ? [1100, 1200] : phase === 'claim' ? [2400, 1600] : [1500, 2200];
+    const afterScene = room.events.some((e) => e.type === 'challenged') ? 7000 : 0;
+    room.botAt = Date.now() + afterScene + min + Math.floor(rng() * span);
+  }
+
+  /** 봇이 한 수 둔다. 봇은 사람과 똑같이 자기 눈만 보고 정한다(viewFor). */
+  private moveBot(room: Room): void {
+    room.botAt = null;
+    const seat = this.botToMove(room);
+    if (seat < 0) return;
+    const action = botAction(viewFor(room.game!, seat), rng, BOT_LEVELS[room.bot ?? 'normal']);
+    this.applyResult(room, reduce(room.game!, seat, action, rng));
   }
 
   private start(room: Room): void {
@@ -217,7 +264,7 @@ export class GameRoom extends DurableObject<Env> {
     room.rankResult = undefined;
     room.events = [];
     room.seq++;
-    room.deadline = Date.now() + TURN_MS;
+    room.deadline = Date.now() + (room.turnMs ?? TURN_MS);
     for (const s of room.seats) {
       s.ready = false;
       s.rematch = false;
@@ -250,13 +297,15 @@ export class GameRoom extends DurableObject<Env> {
 
     if (url.pathname === '/create') {
       if (await this.load()) return new Response(null, { status: 409 });
-      const opts = (await request.json()) as { code: string; auto?: boolean; reserved?: string[]; ranked?: boolean };
+      const opts = (await request.json()) as { code: string; auto?: boolean; reserved?: string[]; ranked?: boolean; bot?: BotLevel; turnMs?: number };
       this.room = {
         code: opts.code,
         status: 'lobby',
         auto: opts.auto,
         ranked: opts.ranked,
         reserved: opts.reserved,
+        bot: opts.bot,
+        turnMs: opts.turnMs,
         seats: [],
         game: null,
         deadline: null,
@@ -300,7 +349,13 @@ export class GameRoom extends DurableObject<Env> {
         if (room.reserved && !room.reserved.includes(pid)) return reject('매칭된 사람만 들어올 수 있는 방이에요.');
         seat = { pid, name, ready: false, rematch: false, offlineSince: null };
         room.seats.push(seat);
-        if (room.auto && room.seats.length === (room.reserved?.length ?? MIN_SEATS)) this.start(room);
+        // 봇 방: 사람이 들어오면 봇이 맞은편에 앉는다.
+        if (room.bot && !room.seats.some((s) => s.bot)) {
+          const botName = BOT_NAMES[Math.floor(rng() * BOT_NAMES.length)]!;
+          room.seats.push({ pid: `bot-${crypto.randomUUID()}`, name: botName, ready: true, rematch: false, offlineSince: null, bot: true });
+        }
+        const expected = room.bot ? 2 : (room.reserved?.length ?? MIN_SEATS);
+        if (room.auto && room.seats.length === expected) this.start(room);
       } else if (room.status === 'lobby') {
         seat.name = name;
       }
@@ -354,19 +409,27 @@ export class GameRoom extends DurableObject<Env> {
       case 'chat': {
         // 채팅은 방 상태를 바꾸지 않는다: 저장하지 않고 지금 접속한 사람에게만 전한다.
         const now = Date.now();
-        if (now - (this.lastChat.get(att.pid) ?? 0) < CHAT_GAP_MS) return;
+        const last = this.lastChat.get(att.pid) ?? 0;
+        if (now - last < CHAT_GAP_MS) return;
+        // 아래에서 설정을 읽느라 잠깐 기다리는 사이에 같은 사람의 다음 글이 끼어들 수 있으므로, 기다리기 전에 먼저 적어 둔다.
+        // 글이 거절되면(보내지지 않으면) 원래대로 되돌려, 곧바로 다른 말을 보낼 수 있게 한다.
+        this.lastChat.set(att.pid, now);
+        const reject = (message?: string) => {
+          this.lastChat.set(att.pid, last);
+          if (message) this.send(ws, { t: 'error', message });
+        };
         const out: ServerMessage = { t: 'chat', from: idx, name: seat.name };
         if (msg.preset !== undefined) {
-          if (msg.preset >= CHAT_PRESETS.length) return;
+          if (msg.preset >= CHAT_PRESETS.length) return reject();
           out.preset = msg.preset;
         } else {
           // 빠른 매칭은 모르는 사람과 만나는 방이라 정해진 말만 주고받는다.
-          if (room.auto) return this.send(ws, { t: 'error', message: '빠른 매칭에서는 정해진 말만 보낼 수 있어요.' });
+          if (room.auto) return reject('빠른 매칭에서는 정해진 말만 보낼 수 있어요.');
+          if (!(await getSettings(this.env.DB)).freeChat) return reject('지금은 정해진 말만 보낼 수 있어요.');
           const text = cleanChat(msg.text ?? '');
-          if (!text) return;
+          if (!text) return reject();
           out.text = text;
         }
-        this.lastChat.set(att.pid, now);
         // 신고·분쟁 확인용으로 일정 기간 보관한다. 저장이 실패해도 채팅 전달은 막지 않는다.
         this.ctx.waitUntil(
           saveChat(this.env.DB, { roomCode: room.code, userId: att.pid, name: seat.name, text: out.text, preset: out.preset, quickMatch: !!room.auto }).catch((e) =>
@@ -384,6 +447,8 @@ export class GameRoom extends DurableObject<Env> {
         // 순위전은 판마다 새로 매칭한다(같은 상대와 연달아 붙어 점수를 주고받지 못하게).
         if (room.status !== 'over' || room.ranked) return;
         seat.rematch = true;
+        // 봇은 언제나 한 판 더 한다.
+        for (const s of room.seats) if (s.bot) s.rematch = true;
         {
           const staying = room.seats.filter((s) => !absent(s));
           if (staying.length >= MIN_SEATS && staying.every((s) => s.rematch)) this.start(room);
@@ -430,7 +495,9 @@ export class GameRoom extends DurableObject<Env> {
   override async alarm(): Promise<void> {
     const room = await this.load();
     if (!room) return;
-    if (room.seats.length === 0) return this.destroy();
+    // 사람이 한 명도 남지 않았으면(봇만 남았으면) 방을 닫는다.
+    if (!room.seats.some((s) => !s.bot)) return this.destroy();
+    this.planBot(room);
 
     const now = Date.now();
     const gone = room.seats.findIndex(
@@ -439,6 +506,8 @@ export class GameRoom extends DurableObject<Env> {
     if (gone >= 0) {
       if (room.status === 'playing') this.forfeitSeat(room, gone);
       else this.removeSeat(room, gone);
+    } else if (room.botAt && now >= room.botAt) {
+      this.moveBot(room);
     } else if (room.status === 'playing' && room.game && room.deadline !== null && now >= room.deadline) {
       this.applyResult(room, timeout(room.game, rng));
     }

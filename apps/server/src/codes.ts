@@ -19,6 +19,10 @@ export interface RoomOptions {
   reserved?: string[];
   /** 순위전 방: 결과를 점수에 반영한다. */
   ranked?: boolean;
+  /** 한 행동의 제한 시간(밀리초). 관리자 설정에서 온다. */
+  turnMs?: number;
+  /** 사람 한 명이 들어오면 이 난이도의 봇이 상대로 앉는다(빠른 매칭에서 상대가 없을 때). */
+  bot?: 'easy' | 'normal' | 'hard';
 }
 
 /** 새 방을 만들고 코드를 돌려준다. 코드가 겹치면 다시 뽑는다. 실패하면 null. */

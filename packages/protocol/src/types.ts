@@ -36,6 +36,8 @@ export interface SeatView {
   name: string;
   ready: boolean;
   online: boolean;
+  /** 사람이 아니라 서버가 두는 봇. */
+  bot: boolean;
   rematch: boolean;
 }
 

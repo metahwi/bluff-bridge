@@ -347,3 +347,5 @@ button.rankedBtn .badge { background: var(--ink); }
 .ranking li > span:last-of-type { font-weight: 700; font-variant-numeric: tabular-nums; }
 .ranking li small { grid-column: 2 / -1; }
 .ranking li.me { background: #fff6cf; box-shadow: -6px 0 0 #fff6cf, 6px 0 0 #fff6cf; }
+/* 관리자가 올린 공지 */
+.homeNotice { text-align: center; border-color: var(--ink); background: #fff6cf; color: var(--ink); white-space: pre-wrap; }

@@ -470,6 +470,80 @@ for (const m of [P, Q, R]) check((await authPost('delete-user', { password: rank
 const boardAfter = ((await (await fetch(`${base}/api/ranking`)).json()) as { top: { name: string }[] }).top;
 check(!boardAfter.some((x) => x.name === '피'), '탈퇴했는데 순위표에 남아 있음');
 
+// 10. 관리자 페이지: 암호로 들어가고, 설정을 바꾸면 봇이 빠른 매칭에 들어온다
+const adminPassword = process.env.ADMIN_PASSWORD ?? readFileSync(new URL('../.dev.vars', import.meta.url), 'utf8').match(/^ADMIN_PASSWORD=(.+)$/m)?.[1]?.trim();
+const adminLogin = (password: string) =>
+  fetch(`${base}/api/admin/login`, { method: 'POST', headers: { 'Content-Type': 'application/json', Origin: base }, body: JSON.stringify({ password }) });
+check((await fetch(`${base}/api/admin/overview`)).status === 403, '로그인 없이 관리자 개요가 보임');
+check((await fetch(`${base}/api/admin/settings`, { method: 'PUT', headers: { 'Content-Type': 'application/json' }, body: '{"botsEnabled":true}' })).status === 403, '로그인 없이 설정이 바뀜');
+check((await adminLogin('wrong-admin-password')).status === 401, '틀린 관리자 암호로 로그인됨');
+const loggedIn = await adminLogin(adminPassword ?? '');
+check(loggedIn.ok, `관리자 로그인 실패: ${loggedIn.status}`);
+const adminCookie = loggedIn.headers.getSetCookie().map((c) => c.split(';')[0]).join('; ');
+check(/HttpOnly/i.test(loggedIn.headers.getSetCookie()[0] ?? ''), '관리자 쿠키가 HttpOnly가 아님');
+const asAdmin = (path: string, init: RequestInit = {}) =>
+  fetch(`${base}/api/admin/${path}`, { ...init, headers: { 'Content-Type': 'application/json', Origin: base, Cookie: adminCookie, ...init.headers } });
+check(((await (await asAdmin('session')).json()) as { admin: boolean }).admin === true, '관리자 세션이 확인되지 않음');
+check(((await (await fetch(`${base}/api/admin/session`)).json()) as { admin: boolean }).admin === false, '쿠키 없이 관리자로 보임');
+const overview = (await (await asAdmin('overview')).json()) as Record<string, number>;
+check(overview.matches! > 0 && overview.users! > 0 && typeof overview.members === 'number', `개요 숫자가 이상함: ${JSON.stringify(overview)}`);
+const listed = (await (await asAdmin('users?guests=1&q=' + encodeURIComponent('에이'))).json()) as { users: { name: string; guest: boolean; email: string | null }[] };
+check(listed.users.some((u) => u.name === '에이' && u.guest && u.email === null), '회원 목록에서 게스트를 찾지 못함');
+
+interface GameSettings {
+  botsEnabled: boolean;
+  botWaitSec: number;
+  botLevel: string;
+  turnSeconds: number;
+  freeChat: boolean;
+  notice: string;
+}
+const original = ((await (await asAdmin('settings')).json()) as { settings: GameSettings }).settings;
+const putSettings = async (s: Partial<GameSettings>) => ((await (await asAdmin('settings', { method: 'PUT', body: JSON.stringify(s) })).json()) as { settings: GameSettings }).settings;
+try {
+  // 범위를 벗어난 값은 서버가 맞춰서 저장한다
+  const clamped = await putSettings({ botWaitSec: 1, turnSeconds: 9999, botLevel: 'impossible' as never });
+  check(clamped.botWaitSec === 3 && clamped.turnSeconds === 120 && clamped.botLevel === original.botLevel, `범위를 벗어난 설정이 그대로 저장됨: ${JSON.stringify(clamped)}`);
+  const noticeText = `점검 공지 ${Date.now()}`;
+  const on = await putSettings({ botsEnabled: true, botWaitSec: 3, turnSeconds: 30, notice: noticeText });
+  check(on.botsEnabled && on.botWaitSec === 3, '봇 설정이 저장되지 않음');
+
+  // 혼자 빠른 매칭 줄에 서면 잠시 뒤 봇이 있는 방으로 안내된다(설정이 퍼지는 데 최대 15초)
+  const lonelyCookie = await guest('혼자');
+  const lonely = line(lonelyCookie);
+  const gotLonely = await Promise.race([lonely.done, sleep(40_000).then(() => lonely.got)]);
+  const botMatch = gotLonely.find((m) => m.t === 'matched');
+  check(!!botMatch, `봇이 켜져 있는데 혼자서는 매칭되지 않음: ${JSON.stringify(gotLonely)}`);
+  if (botMatch?.t === 'matched') {
+    const human = await connect(botMatch.code, '혼자', lonelyCookie);
+    await until(() => human.room?.status === 'playing', '봇과의 판 시작');
+    const botSeat = human.room!.seats.findIndex((s) => s.bot);
+    check(botSeat >= 0 && /봇$/.test(human.room!.seats[botSeat]!.name) && human.room!.seats.filter((s) => s.bot).length === 1, `봇 자리가 이상함: ${JSON.stringify(human.room!.seats)}`);
+    check(human.room!.ranked === false, '봇 방이 순위전으로 표시됨');
+    // 사람은 바로바로 두고, 봇이 스스로 굴리고·선언하고·응답해서 판이 여러 턴 나아가는지 본다
+    autoplay(human);
+    await until(() => (human.room?.game?.round ?? 0) >= 4 || human.room?.status === 'over', '봇이 수를 둠', 90_000);
+    console.log(`봇 대결: ${human.room!.seats[botSeat]!.name}와 ${human.room!.game!.round}턴까지 진행`);
+    human.onState = () => {};
+    send(human, { t: 'leave' });
+    human.ws.close();
+  }
+  check(((await (await fetch(`${base}/api/me`)).json()) as { notice?: string }).notice === noticeText, '공지가 첫 화면 정보에 실리지 않음');
+  // 순위전 줄에는 봇이 오지 않는다
+  const solo = await newMember('솔로');
+  const soloLine = line(solo.cookie, 'ranked');
+  await sleep(6_000);
+  check(!soloLine.got.some((m) => m.t === 'matched'), '순위전에 봇이 들어옴');
+  soloLine.close();
+  await soloLine.done;
+  await authPost('delete-user', { password: rankPassword }, solo.cookie);
+} finally {
+  // 점검 전의 설정으로 되돌린다
+  const restored = await putSettings(original);
+  check(JSON.stringify(restored) === JSON.stringify(original), '설정을 원래대로 되돌리지 못함');
+}
+check((await asAdmin('logout', { method: 'POST' })).ok, '관리자 로그아웃 실패');
+
 if (failures.length) {
   console.error(`\n실패 ${failures.length}건:`);
   for (const f of new Set(failures)) console.error(' - ' + f);
