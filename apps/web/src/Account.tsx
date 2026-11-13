@@ -116,6 +116,31 @@ export function Account({
         <li>휴대폰과 컴퓨터에서 같은 계정으로 이어서 해요</li>
       </ul>
       <small>가입하지 않아도 빠른 매칭과 친구 방은 할 수 있어요.</small>
+      {me.providers.length > 0 && (
+        <div className="social">
+          {me.providers.map((p) =>
+            p === 'kakao' ? (
+              <button key={p} className="kakaoBtn" onClick={() => socialLogin(p)}>
+                <svg viewBox="0 0 24 24" width="20" height="20" aria-hidden="true">
+                  <path
+                    fill="#000"
+                    d="M12 3C6.48 3 2 6.54 2 10.9c0 2.82 1.87 5.29 4.69 6.69l-.96 3.53c-.08.31.27.56.54.38l4.2-2.78c.5.05 1.01.08 1.53.08 5.52 0 10-3.54 10-7.9S17.52 3 12 3z"
+                  />
+                </svg>
+                <span>{PROVIDER_LABEL[p]}</span>
+              </button>
+            ) : (
+              <button key={p} className="ghost" onClick={() => socialLogin(p)}>
+                {PROVIDER_LABEL[p] ?? p}
+              </button>
+            ),
+          )}
+          <small>
+            계속하면 <a href="/terms">이용약관</a>과 <a href="/privacy">개인정보 처리방침</a>에 동의하고 만 14세 이상임을 확인하는 것으로 봐요.
+          </small>
+          <span className="or">또는 이메일로</span>
+        </div>
+      )}
       <div className="row tabs">
         <button className={mode === 'login' ? '' : 'ghost'} onClick={() => open('login')}>
           로그인
@@ -188,20 +213,6 @@ export function Account({
         </form>
       )}
 
-      {mode !== 'closed' && me.providers.length > 0 && (
-        <>
-          <div className="row">
-            {me.providers.map((p) => (
-              <button key={p} className="ghost" onClick={() => socialLogin(p)}>
-                {PROVIDER_LABEL[p] ?? p}
-              </button>
-            ))}
-          </div>
-          <small>
-            계속하면 <a href="/terms">이용약관</a>과 <a href="/privacy">개인정보 처리방침</a>에 동의하고 만 14세 이상임을 확인하는 것으로 봐요.
-          </small>
-        </>
-      )}
     </section>
   );
 }
