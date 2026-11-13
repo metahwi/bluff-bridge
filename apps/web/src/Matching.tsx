@@ -13,8 +13,9 @@ const WAITING: StageState = { length: RULES.bridgeLength, pawns: [0], crowd: [{ 
 /** 화면에 안내하는 예상 대기 시간(초). 실제로 잰 값이 아니라 정해 둔 숫자다. */
 const EXPECTED_WAIT = 45;
 
-/** 빠른 매칭 대기 화면. 대기열에 연결해 두었다가 짝이 정해지면 방 코드를 받는다. */
-export function Matching({ onMatched, onCancel }: { onMatched: (code: string) => void; onCancel: () => void }) {
+/** 매칭 대기 화면(빠른 매칭 또는 순위전). 대기열에 연결해 두었다가 짝이 정해지면 방 코드를 받는다. */
+export function Matching({ mode, onMatched, onCancel }: { mode: 'quick' | 'ranked'; onMatched: (code: string) => void; onCancel: () => void }) {
+  const ranked = mode === 'ranked';
   const [seconds, setSeconds] = useState(0);
   const [error, setError] = useState('');
   const work = useWork();
@@ -27,10 +28,12 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
 
     const open = () => {
       const proto = location.protocol === 'https:' ? 'wss' : 'ws';
-      const socket = new WebSocket(`${proto}://${location.host}/ws/match`);
+      const socket = new WebSocket(`${proto}://${location.host}/ws/match${ranked ? '?mode=ranked' : ''}`);
       ws = socket;
       socket.onopen = () => {
         setError('');
+        // 연결이 열린 뒤에야 줄을 선다(연결하다 만 소켓이 남과 짝지어지지 않게).
+        socket.send('join');
         pingTimer = setInterval(() => socket.readyState === WebSocket.OPEN && socket.send('ping'), 20_000);
       };
       socket.onmessage = (e) => {
@@ -70,14 +73,14 @@ export function Matching({ onMatched, onCancel }: { onMatched: (code: string) =>
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  if (work) return <WorkMatching seconds={seconds} expected={EXPECTED_WAIT} error={error} onCancel={onCancel} />;
+  if (work) return <WorkMatching seconds={seconds} expected={EXPECTED_WAIT} error={error} ranked={ranked} onCancel={onCancel} />;
 
   return (
     <main className="home matching">
       <SettingsButton floating />
       <StageView state={WAITING} />
       <section className="panel">
-        <h2>상대를 찾는 중…</h2>
+        <h2>{ranked ? '순위전 상대를 찾는 중…' : '상대를 찾는 중…'}</h2>
         <p className="elapsed">{seconds}초 지남</p>
         <small>예상 대기 시간 약 {EXPECTED_WAIT}초</small>
         {error && (

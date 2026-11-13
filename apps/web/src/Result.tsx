@@ -1,6 +1,8 @@
 import { useEffect, useState } from 'react';
 import { POINTS, emptyStats, scoreOf } from '@bluff-bridge/engine';
 import type { PlayerView } from '@bluff-bridge/engine';
+import type { RankChange } from '@bluff-bridge/protocol/types';
+import { RankResult } from './Rank.tsx';
 import { Pawn } from './pixel.tsx';
 import { sound } from './sound.ts';
 
@@ -35,6 +37,8 @@ export function Result({
   game,
   me,
   note,
+  ranked = false,
+  rank = null,
   waiting,
   onRematch,
   onLeave,
@@ -43,6 +47,10 @@ export function Result({
   me: number;
   /** 기권 등으로 끝났을 때의 안내. */
   note?: string | null;
+  /** 순위전이었는지. 순위전이면 다시 하기 대신 새 상대를 찾는다. */
+  ranked?: boolean;
+  /** 순위전에서 내 점수가 어떻게 바뀌었는지. */
+  rank?: RankChange | null;
   /** 내가 이미 다시 하기를 눌렀는지. */
   waiting: boolean;
   onRematch: () => void;
@@ -64,6 +72,8 @@ export function Result({
           {note}
         </p>
       )}
+
+      {rank && <RankResult change={rank} />}
 
       <div className={'scores n' + game.players.length}>
         {rows.map(({ p, i, stats, line }) => (
@@ -116,7 +126,7 @@ export function Result({
 
       <div className="row">
         <button disabled={waiting} onClick={onRematch}>
-          {waiting ? '상대를 기다리는 중…' : '다시 하기'}
+          {ranked ? '다시 매칭' : waiting ? '상대를 기다리는 중…' : '다시 하기'}
         </button>
         <button className="ghost" onClick={onLeave}>
           나가기

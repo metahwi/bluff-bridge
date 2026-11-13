@@ -4,6 +4,7 @@ import { RULES, rulesFor } from '@bluff-bridge/engine';
 const MULTI = rulesFor(4);
 import { NAME_MAX } from '@bluff-bridge/protocol/types';
 import type { Me } from '../auth.ts';
+import { MyRank, TierBadge, useRanking } from '../Rank.tsx';
 import { WorkChrome } from './WorkChrome.tsx';
 
 const REASON: Record<string, string> = { finish: '최종 승인', elimination: '안건 소진', forfeit: '자리 비움' };
@@ -20,6 +21,8 @@ export interface WorkHomeProps {
   setDraft: (v: string) => void;
   setInvite: (v: string) => void;
   onQuick: () => void;
+  /** 정기 평가(순위전) 줄에 선다. 회원만 가능. */
+  onRanked: () => void;
   onCreate: () => void;
   onJoin: () => void;
   onEnter: () => void;
@@ -29,6 +32,8 @@ export interface WorkHomeProps {
 export function WorkHome(p: WorkHomeProps) {
   const r = p.me.records;
   const ready = !p.busy && !!p.draft.trim();
+  const member = !!p.me.user && !p.me.user.isAnonymous;
+  const ranking = useRanking();
   const guide = [
     `[다시 계산]을 누르면 1~${RULES.maxClaim} 또는 #N/A 값이 나옵니다. 값은 본인만 볼 수 있습니다. 여섯 번 중 두 번은 #N/A입니다.`,
     `1~${RULES.maxClaim} 중 하나를 보고합니다. 실제 값과 달라도 됩니다. #N/A가 나오면 반드시 임의의 값을 보고해야 합니다.`,
@@ -88,6 +93,16 @@ export function WorkHome(p: WorkHomeProps) {
               </tr>
               <tr>
                 <th>{row++}</th>
+                <td className="head">정기 평가</td>
+                <td>
+                  <button className="wbBtn primary" disabled={!ready || !member} onClick={p.onRanked}>
+                    평가 배정 (1대1)
+                  </button>
+                </td>
+                <td className="note">{member && p.me.rank ? <MyRank rank={p.me.rank} work /> : '회원만 참여할 수 있습니다. 결과가 평가 점수와 직급에 반영됩니다.'}</td>
+              </tr>
+              <tr>
+                <th>{row++}</th>
                 <td className="head">공유받은 시트</td>
                 <td>
                   <input
@@ -142,6 +157,30 @@ export function WorkHome(p: WorkHomeProps) {
               <td colSpan={2}>{g}</td>
             </tr>
           ))}
+          {ranking && ranking.length > 0 && (
+            <>
+              <tr>
+                <th>{row++}</th>
+                <td colSpan={3} />
+              </tr>
+              <tr>
+                <th>{row++}</th>
+                <td className="head">평가 순위</td>
+                <td className="head">담당자</td>
+                <td className="head">직급 / 평가 점수</td>
+              </tr>
+              {ranking.map((e, i) => (
+                <tr key={i} className={p.me.rank?.place === i + 1 ? 'mine' : ''}>
+                  <th>{row++}</th>
+                  <td className="num">{i + 1}</td>
+                  <td>{e.name}</td>
+                  <td>
+                    <TierBadge tier={e.tier} work /> {e.rating}점 <span className="note">({e.wins}승 {e.losses}패)</span>
+                  </td>
+                </tr>
+              ))}
+            </>
+          )}
           {r && r.played > 0 && (
             <>
               <tr>
@@ -175,7 +214,7 @@ export function WorkHome(p: WorkHomeProps) {
 }
 
 /** 자동 배정(빠른 매칭) 대기 화면. */
-export function WorkMatching({ seconds, expected, error, onCancel }: { seconds: number; expected: number; error: string; onCancel: () => void }) {
+export function WorkMatching({ seconds, expected, error, ranked = false, onCancel }: { seconds: number; expected: number; error: string; ranked?: boolean; onCancel: () => void }) {
   return (
     <WorkChrome
       cell="B2"
@@ -198,7 +237,7 @@ export function WorkMatching({ seconds, expected, error, onCancel }: { seconds: 
           <tr>
             <th>1</th>
             <td className="head">상태</td>
-            <td>담당자 배정 중…</td>
+            <td>{ranked ? '정기 평가 상대 배정 중…' : '담당자 배정 중…'}</td>
           </tr>
           <tr>
             <th>2</th>

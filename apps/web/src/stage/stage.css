@@ -317,3 +317,33 @@ main.legal table { width: 100%; border-collapse: collapse; font-size: 14px; }
 main.legal th, main.legal td { padding: 6px 8px; border: 2px solid var(--paper-dark); text-align: left; vertical-align: top; }
 main.legal th { background: var(--paper-dark); }
 @media (max-width: 520px) { main.legal table { font-size: 13px; } main.legal th, main.legal td { padding: 4px 5px; } }
+/* ── 순위전 ── */
+.tier { display: inline-block; padding: 0 7px; border: 3px solid var(--ink); font-family: Galmuri11, sans-serif; font-size: 12px; font-weight: 700; line-height: 1.5; white-space: nowrap; background: var(--paper); color: var(--ink); }
+.tier.placing { border-style: dashed; font-weight: 400; color: var(--dirt-dark); }
+.tier.t0 { background: #e4d3a2; }
+.tier.t1 { background: #bfe3a0; }
+.tier.t2 { background: #a9d8f0; }
+.tier.t3 { background: #d6b8f0; }
+.tier.t4 { background: var(--gold); box-shadow: inset 0 0 0 2px #fff3c4; }
+button.rankedBtn { background: #f7d774; }
+button.rankedBtn .badge { background: var(--ink); }
+.myRank { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 8px; font-size: 14px; }
+.myRank span { font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); }
+.rankResult { display: flex; flex-direction: column; align-items: center; gap: 4px; padding: 8px 14px; background: var(--paper); border: 3px solid var(--ink); box-shadow: inset 0 0 0 3px var(--paper-dark), 4px 4px 0 rgb(0 0 0 / 0.4); }
+.rankLine { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 4px 10px; }
+.rankLine > span:first-child { font-family: Galmuri11, sans-serif; font-size: 12px; color: var(--dirt-dark); }
+.rankLine b { font-family: Galmuri11, sans-serif; font-size: 26px; line-height: 1; font-variant-numeric: tabular-nums; }
+.rankLine em { font-style: normal; font-family: Galmuri11, sans-serif; font-weight: 700; font-size: 16px; color: var(--dirt-dark); }
+.rankResult.up .rankLine em { color: #2f7a3f; }
+.rankResult.down .rankLine em { color: var(--red-dark); }
+.rankResult small.promoted { color: #2f7a3f; font-weight: 700; }
+.rankResult small.demoted { color: var(--red-dark); }
+.ranking { align-items: stretch; text-align: left; }
+.ranking ol { list-style: none; margin: 0; padding: 0; }
+.ranking li { display: grid; grid-template-columns: 26px minmax(0, 1fr) auto auto; align-items: center; gap: 0 8px; padding: 5px 0; border-top: 3px dotted var(--paper-dark); }
+.ranking li i { font-style: normal; font-family: Galmuri11, sans-serif; font-weight: 700; text-align: center; color: var(--dirt-dark); }
+.ranking li:nth-child(-n + 3) i { color: var(--red-dark); }
+.ranking li b { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.ranking li > span:last-of-type { font-weight: 700; font-variant-numeric: tabular-nums; }
+.ranking li small { grid-column: 2 / -1; }
+.ranking li.me { background: #fff6cf; box-shadow: -6px 0 0 #fff6cf, 6px 0 0 #fff6cf; }

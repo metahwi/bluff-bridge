@@ -201,3 +201,14 @@
 [data-mode='work'] .feedback textarea { border: 1px solid #b5b5b5; background: #fff; font-size: 13px; }
 [data-mode='work'] .chatNote { color: var(--wb-muted); }
 [data-mode='work'] main.legal article { margin: 0; }
+/* 정기 평가(순위전) */
+[data-mode='work'] .tier { padding: 0 6px; border: 1px solid #9aa; border-radius: 3px; font-family: inherit; font-size: 12px; font-weight: 400; background: #f1f1f1; color: var(--wb-text); }
+[data-mode='work'] .tier.t1 { background: #e7efe9; } [data-mode='work'] .tier.t2 { background: #ddebf7; } [data-mode='work'] .tier.t3 { background: #e9dcf5; }
+[data-mode='work'] .tier.t4 { background: #fff2cc; box-shadow: none; font-weight: 700; }
+[data-mode='work'] .myRank { justify-content: flex-start; font-size: 13px; margin: 0; }
+[data-mode='work'] .myRank span { font-family: inherit; color: var(--wb-muted); }
+[data-mode='work'] .rankResult { align-items: flex-start; padding: 6px 10px; background: #fff; border: 1px solid var(--wb-line); box-shadow: none; }
+[data-mode='work'] .rankLine { justify-content: flex-start; }
+[data-mode='work'] .rankLine b { font-family: inherit; font-size: 16px; }
+[data-mode='work'] .rankLine em, [data-mode='work'] .rankLine > span:first-child { font-family: inherit; font-size: 13px; }
+.sheet tr.mine td { background: #fff8dc; }

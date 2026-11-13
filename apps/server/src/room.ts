@@ -11,7 +11,8 @@ import {
 } from '@bluff-bridge/engine';
 import type { GameEvent, GameState } from '@bluff-bridge/engine';
 import { CHAT_GAP_MS, CHAT_PRESETS, GRACE_MS, MAX_SEATS, MIN_SEATS, NAME_MAX, TURN_MS, clientMessage } from '@bluff-bridge/protocol';
-import type { RoomView, ServerMessage } from '@bluff-bridge/protocol';
+import type { RankChange, RoomView, ServerMessage } from '@bluff-bridge/protocol';
+import { applyRanked } from './ranking.ts';
 import type { Env } from './index.ts';
 import { cleanChat } from './chat.ts';
 import { saveMatch } from './records.ts';
@@ -48,6 +49,10 @@ interface Room {
   status: 'lobby' | 'playing' | 'over';
   /** 빠른 매칭 방: 두 명이 모이면 준비 없이 시작한다. */
   auto?: boolean;
+  /** 순위전 방: 끝나면 점수에 반영하고, 다시 하기를 받지 않는다. */
+  ranked?: boolean;
+  /** 순위전이 끝난 뒤 자리별 점수 변화. */
+  rankResult?: RankChange[];
   /** 빠른 매칭 방: 이 계정들만 들어올 수 있다. */
   reserved?: string[];
   seats: Seat[];
@@ -102,7 +107,14 @@ export class GameRoom extends DurableObject<Env> {
     this.pendingRecord = null;
     if (record) {
       try {
-        await saveMatch(this.env.DB, record);
+        const matchId = await saveMatch(this.env.DB, record);
+        // 순위전이면 이긴 사람과 진 사람의 점수를 고치고, 그 결과를 결과 화면에 실어 보낸다.
+        if (room.ranked && record.players.length === 2) {
+          const w = record.players[0]!.won ? 0 : 1;
+          const [win, lose] = [record.players[w]!, record.players[1 - w]!];
+          const [a, b] = await applyRanked(this.env.DB, matchId, { id: win.userId, name: win.name }, { id: lose.userId, name: lose.name });
+          room.rankResult = w === 0 ? [a, b] : [b, a];
+        }
       } catch (e) {
         // 전적 저장이 실패해도 게임 진행은 막지 않는다.
         console.error('전적 저장 실패', e);
@@ -128,6 +140,8 @@ export class GameRoom extends DurableObject<Env> {
       code: room.code,
       status: room.status,
       auto: !!room.auto,
+      ranked: !!room.ranked,
+      rank: room.status === 'over' ? (room.rankResult ?? null) : null,
       seats: room.seats.map((s) => ({
         name: s.name,
         ready: s.ready,
@@ -200,6 +214,7 @@ export class GameRoom extends DurableObject<Env> {
     const first = Math.floor(rng() * room.seats.length);
     room.game = createGame(room.seats.map((s) => s.name), rulesFor(room.seats.length), first);
     room.status = 'playing';
+    room.rankResult = undefined;
     room.events = [];
     room.seq++;
     room.deadline = Date.now() + TURN_MS;
@@ -235,11 +250,12 @@ export class GameRoom extends DurableObject<Env> {
 
     if (url.pathname === '/create') {
       if (await this.load()) return new Response(null, { status: 409 });
-      const opts = (await request.json()) as { code: string; auto?: boolean; reserved?: string[] };
+      const opts = (await request.json()) as { code: string; auto?: boolean; reserved?: string[]; ranked?: boolean };
       this.room = {
         code: opts.code,
         status: 'lobby',
         auto: opts.auto,
+        ranked: opts.ranked,
         reserved: opts.reserved,
         seats: [],
         game: null,
@@ -365,7 +381,8 @@ export class GameRoom extends DurableObject<Env> {
       }
 
       case 'rematch':
-        if (room.status !== 'over') return;
+        // 순위전은 판마다 새로 매칭한다(같은 상대와 연달아 붙어 점수를 주고받지 못하게).
+        if (room.status !== 'over' || room.ranked) return;
         seat.rematch = true;
         {
           const staying = room.seats.filter((s) => !absent(s));

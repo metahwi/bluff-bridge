@@ -312,6 +312,7 @@ function queue(cookie: string): { got: MatchMessage[]; done: Promise<MatchMessag
   const got: MatchMessage[] = [];
   const done = new Promise<MatchMessage[]>((resolve, reject) => {
     const ws = new WebSocket(`${wsBase}/ws/match`, { headers: { Cookie: cookie, Origin: base } } as never);
+    ws.onopen = () => ws.send('join');
     ws.onmessage = (e) => got.push(JSON.parse(String(e.data)) as MatchMessage);
     ws.onclose = () => resolve(got);
     ws.onerror = () => reject(new Error('대기열 접속 실패'));
@@ -351,6 +352,123 @@ if (matchedX?.t === 'matched') {
   x.ws.close();
   y.ws.close();
 }
+
+// 9. 순위전: 회원끼리만, 1대1, 끝나면 점수가 바뀐다
+/** 대기열에 선다. mode가 'ranked'면 순위전 줄. close로 줄에서 나온다. */
+function line(cookie: string, mode = '') {
+  const got: MatchMessage[] = [];
+  let ws!: WebSocket;
+  let leaving = false;
+  const done = new Promise<MatchMessage[]>((resolve, reject) => {
+    ws = new WebSocket(`${wsBase}/ws/match${mode ? `?mode=${mode}` : ''}`, { headers: { Cookie: cookie, Origin: base } } as never);
+    ws.onopen = () => ws.send('join');
+    ws.onmessage = (e) => got.push(JSON.parse(String(e.data)) as MatchMessage);
+    ws.onclose = () => resolve(got);
+    // 우리가 먼저 끊은 경우에는 서버가 닫는 인사를 돌려주지 않아 오류로 끝날 수 있다. 그건 실패가 아니다.
+    ws.onerror = () => (leaving ? resolve(got) : reject(new Error('대기열 접속 실패')));
+  });
+  return {
+    got,
+    done,
+    close: () => {
+      leaving = true;
+      ws.close();
+    },
+  };
+}
+interface RankInfo {
+  rating: number;
+  tier: number | null;
+  games: number;
+  wins: number;
+  losses: number;
+  place: number | null;
+}
+const rankOf = async (cookie: string) => ((await (await fetch(`${base}/api/me`, { headers: { Cookie: cookie } })).json()) as { rank: RankInfo | null }).rank;
+const rankPassword = 'ranked-hippo-1234';
+/** 점검용 회원을 만든다(게스트로 들어온 뒤 가입). */
+async function newMember(name: string): Promise<{ name: string; cookie: string }> {
+  const res = await authPost('sign-up/email', { name, email: `rank-${Math.random().toString(36).slice(2)}-${Date.now()}@example.com`, password: rankPassword, agreedAt: Date.now() }, await guest(name));
+  if (!res.ok) throw new Error(`점검용 회원 가입 실패: ${res.status} ${res.text}`);
+  return { name, cookie: res.cookie };
+}
+
+const guestRanked = await line(await guest('손님'), 'ranked').done.then(
+  () => true,
+  () => false,
+);
+check(!guestRanked, '게스트가 순위전 대기열에 들어감');
+check((await rankOf(cookieA)) === null, '게스트에게 순위 정보가 내려감');
+
+const [P, Q, R] = [await newMember('피'), await newMember('큐'), await newMember('알')];
+const startRank = await rankOf(P.cookie);
+check(startRank?.rating === 1000 && startRank.games === 0 && startRank.tier === null && startRank.place === null, `처음 순위 정보가 이상함: ${JSON.stringify(startRank)}`);
+
+// 순위전 줄과 빠른 매칭 줄은 섞이지 않는다
+const quickWaiter = line(await guest('빠름'));
+const rankedWaiter = line(P.cookie, 'ranked');
+await until(() => quickWaiter.got.length > 0 && rankedWaiter.got.length > 0, '두 줄에 각각 섬');
+await sleep(400);
+check(!quickWaiter.got.some((m) => m.t === 'matched') && !rankedWaiter.got.some((m) => m.t === 'matched'), '순위전과 빠른 매칭이 서로 짝지어짐');
+quickWaiter.close();
+rankedWaiter.close();
+await Promise.all([quickWaiter.done, rankedWaiter.done]);
+
+/** 두 회원이 순위전으로 만나 한 판을 하고(진 쪽이 바로 나간다), 이긴 쪽이 받은 결과 화면을 돌려준다. */
+async function rankedGame(winner: { name: string; cookie: string }, loser: { name: string; cookie: string }): Promise<RoomView> {
+  const first = line(winner.cookie, 'ranked');
+  await until(() => first.got.length > 0, '순위전 줄에 섬');
+  const [gotW, gotL] = await Promise.all([first.done, line(loser.cookie, 'ranked').done]);
+  const matched = gotW.find((m) => m.t === 'matched');
+  if (matched?.t !== 'matched' || !gotL.some((m) => m.t === 'matched' && m.code === matched.code)) throw new Error(`순위전 매칭 실패: ${JSON.stringify([gotW, gotL])}`);
+  const w = await connect(matched.code, winner.name, winner.cookie);
+  const l = await connect(matched.code, loser.name, loser.cookie);
+  await until(() => w.room?.status === 'playing' && l.room?.status === 'playing', '순위전 자동 시작');
+  check(w.room!.ranked === true && w.room!.rank === null, '순위전 방 표시가 없거나, 끝나기 전에 점수 변화가 내려감');
+  send(l, { t: 'leave' });
+  await until(() => w.room?.status === 'over', '순위전 종료');
+  // 순위전에는 다시 하기가 없다
+  send(w, { t: 'rematch' });
+  await sleep(150);
+  check(w.room!.status === 'over', '순위전에서 다시 하기가 시작됨');
+  const room = w.room!;
+  w.ws.close();
+  return room;
+}
+
+// 첫 판: 둘 다 1000점, 배치 중(K=40)이므로 +20 / -20
+const first = await rankedGame(P, Q);
+const mine = first.rank?.[first.me];
+const theirs = first.rank?.[1 - first.me];
+check(mine?.delta === 20 && mine.before === 1000 && mine.after === 1020 && mine.counted && mine.won, `이긴 쪽 점수 변화가 다름: ${JSON.stringify(mine)}`);
+check(theirs?.delta === -20 && theirs.after === 980 && !theirs.won, `진 쪽 점수 변화가 다름: ${JSON.stringify(theirs)}`);
+const [afterP, afterQ] = [await rankOf(P.cookie), await rankOf(Q.cookie)];
+check(afterP?.rating === 1020 && afterP.wins === 1 && afterP.games === 1 && afterQ?.rating === 980 && afterQ.losses === 1, `저장된 점수가 다름: ${JSON.stringify([afterP, afterQ])}`);
+
+// 같은 두 사람은 하루 세 판까지만 점수에 반영된다
+await rankedGame(P, Q);
+const third = await rankedGame(P, Q);
+check(third.rank?.[third.me]?.counted === true, '세 번째 판이 점수에 반영되지 않음');
+const fourth = await rankedGame(P, Q);
+const frozen = fourth.rank?.[fourth.me];
+check(frozen?.counted === false && frozen.delta === 0 && frozen.after === frozen.before, `네 번째 판이 점수에 반영됨: ${JSON.stringify(frozen)}`);
+check((await rankOf(P.cookie))?.games === 3, '점수에 반영되지 않은 판이 판 수에 들어감');
+
+// 다른 상대와 두 판을 더 해 배치(5판)를 마치면 티어와 등수가 생기고 순위표에 오른다
+await rankedGame(P, R);
+const placement = await rankedGame(P, R);
+check(placement.rank?.[placement.me]?.tierBefore === null && typeof placement.rank?.[placement.me]?.tier === 'number', `배치를 마쳤는데 티어가 없음: ${JSON.stringify(placement.rank?.[placement.me])}`);
+const placed = await rankOf(P.cookie);
+check(placed?.games === 5 && placed.wins === 5 && placed.tier !== null && placed.place !== null && placed.rating > 1080, `배치 후 순위 정보가 다름: ${JSON.stringify(placed)}`);
+const board = ((await (await fetch(`${base}/api/ranking`)).json()) as { top: { name: string; rating: number; tier: number }[] }).top;
+check(board.some((x) => x.name === '피' && x.rating === placed?.rating), `순위표에 없음: ${JSON.stringify(board.slice(0, 5))}`);
+check(!board.some((x) => x.name === '큐'), '배치를 마치지 않은 사람이 순위표에 있음');
+console.log(`순위전: 피 ${placed?.rating}점 (${placed?.place}등), 순위표 ${board.length}명`);
+
+// 점검용 회원은 탈퇴시켜 순위표에 남기지 않는다
+for (const m of [P, Q, R]) check((await authPost('delete-user', { password: rankPassword }, m.cookie)).ok, `${m.name} 탈퇴 실패`);
+const boardAfter = ((await (await fetch(`${base}/api/ranking`)).json()) as { top: { name: string }[] }).top;
+check(!boardAfter.some((x) => x.name === '피'), '탈퇴했는데 순위표에 남아 있음');
 
 if (failures.length) {
   console.error(`\n실패 ${failures.length}건:`);

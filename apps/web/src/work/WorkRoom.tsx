@@ -5,7 +5,8 @@ import { useEffect, useState } from 'react';
 import { BLANK, POINTS, canRespond, emptyStats, pending, responders, scoreOf } from '@bluff-bridge/engine';
 import type { GameEvent, PlayerView } from '@bluff-bridge/engine';
 import { MAX_SEATS, MIN_SEATS } from '@bluff-bridge/protocol/types';
-import type { ClientMessage, RoomView } from '@bluff-bridge/protocol/types';
+import type { ClientMessage, RankChange, RoomView } from '@bluff-bridge/protocol/types';
+import { RankResult } from '../Rank.tsx';
 import type { ChompCue } from '../stage/StageView.tsx';
 import { Chat } from '../Chat.tsx';
 import { ReplyOrder } from '../ReplyOrder.tsx';
@@ -94,10 +95,12 @@ export interface WorkRoomProps {
   send: (msg: ClientMessage) => void;
   onCueDone: () => void;
   onCopy: () => void;
+  /** 정기 평가(순위전)가 끝난 뒤 새 상대를 찾는다. */
+  onAgain: () => void;
   onLeave: () => void;
 }
 
-export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, before, copied, send, onCueDone, onCopy, onLeave }: WorkRoomProps) {
+export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, before, copied, send, onCueDone, onCopy, onAgain, onLeave }: WorkRoomProps) {
   const game = room.game;
   const me = room.me;
   const seat = room.seats[me];
@@ -289,7 +292,7 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, be
                 감사 결과: {cue.truth ? '정상 보고' : '허위 보고 적발'} (보고 {cue.claim} / 실제 {value(cue.die)}) → {cue.victimName} {cue.revoked ? '최종 승인 1건 취소' : '안건 반려'}
               </p>
             ) : room.status === 'over' ? (
-              <Summary game={game} me={me} waiting={!!seat?.rematch} onRematch={() => send({ t: 'rematch' })} onLeave={onLeave} />
+              <Summary game={game} me={me} waiting={!!seat?.rematch} ranked={room.ranked} rank={room.rank?.[me] ?? null} onRematch={() => (room.ranked ? onAgain() : send({ t: 'rematch' }))} onLeave={onLeave} />
             ) : game.phase === 'roll' ? (
               myTurn ? (
                 <p>
@@ -370,7 +373,23 @@ export function WorkRoom({ code, room, deadline, conn, error, log, cue, chat, be
 }
 
 /** 판이 끝난 뒤의 결산표. 게임 화면의 점수표와 같은 내용이다. */
-function Summary({ game, me, waiting, onRematch, onLeave }: { game: PlayerView; me: number; waiting: boolean; onRematch: () => void; onLeave: () => void }) {
+function Summary({
+  game,
+  me,
+  waiting,
+  ranked,
+  rank,
+  onRematch,
+  onLeave,
+}: {
+  game: PlayerView;
+  me: number;
+  waiting: boolean;
+  ranked: boolean;
+  rank: RankChange | null;
+  onRematch: () => void;
+  onLeave: () => void;
+}) {
   const winner = game.winner ?? -1;
   const rows = game.players.map((p, i) => {
     const s = game.stats?.[i] ?? emptyStats();
@@ -381,6 +400,7 @@ function Summary({ game, me, waiting, onRematch, onLeave }: { game: PlayerView; 
       <p>
         <b>분기 결산</b> — {winner === me ? '이번 분기 우수 담당자로 선정되었습니다.' : `우수 담당자: ${game.players[winner]?.name ?? '?'}`}
       </p>
+      {rank && <RankResult change={rank} work />}
       <div className="sheetScroll">
       <table className="sheet summary">
         <tbody>
@@ -416,7 +436,7 @@ function Summary({ game, me, waiting, onRematch, onLeave }: { game: PlayerView; 
       </div>
       <p className="choices">
         <button className="wbBtn primary" disabled={waiting} onClick={onRematch}>
-          {waiting ? '상대를 기다리는 중…' : '다음 분기 시작'}
+          {ranked ? '다음 평가 배정' : waiting ? '상대를 기다리는 중…' : '다음 분기 시작'}
         </button>
         <button className="wbBtn" onClick={onLeave}>
           시트 닫기

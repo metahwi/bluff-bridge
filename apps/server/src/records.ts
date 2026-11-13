@@ -32,7 +32,8 @@ export interface MatchRecord {
   players: { userId: string; name: string; finished: number; lost: number; won: boolean }[];
 }
 
-export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<void> {
+/** 판 결과를 저장하고 그 판의 id를 돌려준다. */
+export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<string> {
   const id = crypto.randomUUID();
   await db.batch([
     db
@@ -46,6 +47,7 @@ export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<void>
         .bind(id, p.userId, seat, p.name, p.finished, p.lost, p.won ? 1 : 0),
     ),
   ]);
+  return id;
 }
 
 export async function moveRecords(db: D1Database, fromUserId: string, toUserId: string): Promise<void> {

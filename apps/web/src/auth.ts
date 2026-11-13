@@ -13,6 +13,17 @@ export interface Me {
     won: number;
     recent: { endedAt: number; won: boolean; opponents: string; rounds: number; reason: string }[];
   } | null;
+  /** 순위전 정보. 회원만 있다(게스트는 null). */
+  rank: {
+    rating: number;
+    /** 티어 번호(0 = 가장 낮음). 배치 중이면 null. */
+    tier: number | null;
+    games: number;
+    wins: number;
+    losses: number;
+    best: number;
+    place: number | null;
+  } | null;
 }
 
 async function fetchMe(): Promise<Me> {

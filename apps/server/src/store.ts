@@ -98,9 +98,11 @@ export async function moveChat(db: D1Database, fromUserId: string, toUserId: str
   await db.prepare('UPDATE chat_messages SET user_id = ? WHERE user_id = ?').bind(toUserId, fromUserId).run();
 }
 
-/** 탈퇴: 그 사람이 보낸 채팅과 의견을 지우고, 전적에서는 계정과의 연결만 끊는다(상대의 전적은 남아야 하므로). */
+/** 탈퇴: 그 사람이 보낸 채팅과 의견, 순위전 점수를 지우고, 전적에서는 계정과의 연결만 끊는다(상대의 전적은 남아야 하므로). */
 export async function eraseUser(db: D1Database, userId: string): Promise<void> {
   await db.batch([
+    db.prepare('DELETE FROM ratings WHERE user_id = ?').bind(userId),
+    db.prepare('DELETE FROM rating_changes WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM chat_messages WHERE user_id = ?').bind(userId),
     db.prepare('DELETE FROM feedback WHERE user_id = ?').bind(userId),
     db.prepare("UPDATE match_players SET user_id = 'deleted' WHERE user_id = ?").bind(userId),

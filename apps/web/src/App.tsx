@@ -3,6 +3,7 @@ import { NAME_MAX, ROOM_CODE } from '@bluff-bridge/protocol/types';
 import { CookieError, authClient, ensureGuest, inKakaoTalk, openInBrowser, socialLogin, useMe } from './auth.ts';
 import type { Me } from './auth.ts';
 import { Account } from './Account.tsx';
+import { Leaderboard, MyRank } from './Rank.tsx';
 import { Matching } from './Matching.tsx';
 import { Room } from './Room.tsx';
 import { RULES, rulesFor } from '@bluff-bridge/engine';
@@ -64,7 +65,8 @@ export function App() {
   const [code, setCode] = useState(codeFromPath);
   /** 닉네임을 확인하고 방에 들어가기로 했는지. 로그인된 사람은 초대 링크로 바로 들어간다. */
   const [entered, setEntered] = useState(false);
-  const [matching, setMatching] = useState(false);
+  /** 매칭 대기 중이면 어느 줄인지: 빠른 매칭(quick) 또는 순위전(ranked). */
+  const [matching, setMatching] = useState<'quick' | 'ranked' | null>(null);
   const [draft, setDraft] = useState('');
   const [invite, setInvite] = useState('');
   const [busy, setBusy] = useState(false);
@@ -154,9 +156,10 @@ export function App() {
   if (matching && user) {
     return (
       <Matching
-        onCancel={() => setMatching(false)}
+        mode={matching}
+        onCancel={() => setMatching(null)}
         onMatched={(matched) => {
-          setMatching(false);
+          setMatching(null);
           setEntered(true);
           go(matched);
         }}
@@ -164,7 +167,17 @@ export function App() {
     );
   }
   if (code && user && (entered || savedName)) {
-    return <Room code={code} userId={user.id} onExit={() => go('')} />;
+    return (
+      <Room
+        code={code}
+        userId={user.id}
+        onExit={(next) => {
+          go('');
+          // 순위전 결과 화면의 '다시 매칭': 방을 나와 곧바로 순위전 줄에 다시 선다.
+          if (next === 'ranked') setMatching('ranked');
+        }}
+      />
+    );
   }
 
   const member = user && !user.isAnonymous;
@@ -180,7 +193,8 @@ export function App() {
         onOpenInBrowser={cookieBlocked && inKakaoTalk ? openInBrowser : null}
         setDraft={setDraft}
         setInvite={setInvite}
-        onQuick={() => withName(() => setMatching(true))}
+        onQuick={() => withName(() => setMatching('quick'))}
+        onRanked={() => withName(() => setMatching('ranked'))}
         onCreate={createRoom}
         onJoin={joinRoom}
         onEnter={() => withName(() => setEntered(true))}
@@ -215,9 +229,13 @@ export function App() {
         </>
       ) : (
         <>
-          <button disabled={busy || !draft.trim()} onClick={() => withName(() => setMatching(true))}>
+          <button disabled={busy || !draft.trim()} onClick={() => withName(() => setMatching('quick'))}>
             빠른 매칭
           </button>
+          <button className="rankedBtn" disabled={busy || !draft.trim() || !member} onClick={() => withName(() => setMatching('ranked'))}>
+            순위전 <span className="badge">1대1</span>
+          </button>
+          {member && me.rank ? <MyRank rank={me.rank} /> : <small className="hint">가입하고 로그인하면 순위전을 할 수 있어요.</small>}
           <button className="ghost" disabled={busy || !draft.trim()} onClick={createRoom}>
             친구와 하기 (방 만들기)
           </button>
@@ -268,6 +286,8 @@ export function App() {
       </section>
 
       <Account me={me} draftName={draft.trim()} reload={reload} />
+
+      <Leaderboard myPlace={me.rank?.place ?? null} />
 
       <Records me={me} />
 

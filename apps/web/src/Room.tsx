@@ -237,7 +237,7 @@ function Actions({
   return null;
 }
 
-export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: () => void }) {
+export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: (next?: 'ranked') => void }) {
   const { room, deadline, conn, error, fatal, chat, send } = useRoom(code, userId);
   const chatOn = useChat();
   /** 무대에서 재생 중인 추락 연출. 끝날 때까지 조작을 막는다. */
@@ -364,6 +364,12 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
     }
   }
 
+  /** 순위전 결과 화면의 '다시 매칭': 이 방을 나가 새 상대를 찾는다. */
+  function again() {
+    send({ t: 'leave' });
+    onExit('ranked');
+  }
+
   function leave() {
     send({ t: 'leave' });
     onExit();
@@ -376,7 +382,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
         <p className="error" role="alert">
           {fatal}
         </p>
-        <button onClick={onExit}>처음으로</button>
+        <button onClick={() => onExit()}>처음으로</button>
       </div>
     ) : (
       <div className="panel">{work ? '여는 중…' : '연결 중…'}</div>
@@ -426,6 +432,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
             send={send}
             onCueDone={endCue}
             onCopy={copyLink}
+            onAgain={again}
             onLeave={() => (room.status === 'playing' ? setConfirmLeave(true) : leave())}
           />
         </div>
@@ -450,7 +457,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
       <main className={'room' + (room.status === 'lobby' ? ' lobby' : '')} inert={confirmLeave ? true : undefined}>
         <header>
           <span>
-            방 <b>{code}</b>
+            {room.ranked ? '순위전' : '방'} <b>{code}</b>
             <span className={'conn ' + conn}>{conn === 'open' ? '연결됨' : '재연결 중…'}</span>
           </span>
           <span className="row">
@@ -477,6 +484,8 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
               game={game}
               me={room.me}
               waiting={!!me?.rematch}
+              ranked={room.ranked}
+              rank={room.rank?.[room.me] ?? null}
               note={
                 forfeiter === null
                   ? null
@@ -484,7 +493,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                     ? '내가 기권해서 패배로 기록됐어요.'
                     : `${game.players[forfeiter]?.name} 님이 기권했어요.`
               }
-              onRematch={() => send({ t: 'rematch' })}
+              onRematch={() => (room.ranked ? again() : send({ t: 'rematch' }))}
               onLeave={leave}
             />
           )}
@@ -556,7 +565,7 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                 ) : (
                   <>
                     <h2>{winner === room.me ? '승리!' : `${game.players[winner ?? 0]?.name} 승리`}</h2>
-                    <small>점수표에서 다시 하기를 누르면 한 판 더 해요.</small>
+                    <small>{room.ranked ? '점수표에서 다시 매칭을 누르면 새 상대를 찾아요.' : '점수표에서 다시 하기를 누르면 한 판 더 해요.'}</small>
                   </>
                 )}
                 {error && (

@@ -39,11 +39,30 @@ export interface SeatView {
   rematch: boolean;
 }
 
+/** 순위전 한 판이 끝난 뒤 한 사람의 점수 변화. */
+export interface RankChange {
+  before: number;
+  after: number;
+  delta: number;
+  /** 점수에 반영됐는지. 같은 상대와 하루 제한을 넘기면 false(점수 변동 없음). */
+  counted: boolean;
+  /** 이 판까지 한 순위전 판 수. */
+  games: number;
+  /** 판 전후의 티어 번호(0 = 가장 낮음). 배치 판을 다 하기 전에는 null. */
+  tierBefore: number | null;
+  tier: number | null;
+  won: boolean;
+}
+
 export interface RoomView {
   code: string;
   status: 'lobby' | 'playing' | 'over';
   /** 빠른 매칭으로 만들어진 방. 매칭된 사람이 모두 모이면 바로 시작한다. */
   auto: boolean;
+  /** 순위전 방. 결과가 점수에 반영되고, 다시 하기가 없다. */
+  ranked: boolean;
+  /** 순위전이 끝난 뒤 자리별 점수 변화. 그 전에는 null. */
+  rank: RankChange[] | null;
   /** 자리 목록. 첫 번째 자리가 방장이다. */
   seats: SeatView[];
   /** 내 자리 번호. 게임 중에는 game.players의 번호와 같다. */

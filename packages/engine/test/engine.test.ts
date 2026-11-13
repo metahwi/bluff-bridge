@@ -8,8 +8,17 @@ import {
   forfeit,
   reduce,
   scoreOf,
+  K_NORMAL,
+  K_PLACEMENT,
+  PLACEMENT_GAMES,
+  RATING_START,
+  TIER_FLOORS,
+  expected,
   pending,
+  rate,
   rulesFor,
+  tierOf,
+  toNextTier,
   timeout,
   timeoutAction,
   viewEvent,
@@ -386,5 +395,47 @@ describe('시간 초과', () => {
       const a = timeoutAction(s, () => r);
       expect(() => play(s, awaiting(s)!, a)).not.toThrow();
     }
+  });
+});
+
+describe('순위전 점수', () => {
+  const veteran = (rating: number) => ({ rating, games: PLACEMENT_GAMES });
+  const rookie = (rating: number) => ({ rating, games: 0 });
+
+  it('점수가 같으면 이긴 쪽이 K의 절반만큼 오르고 진 쪽이 그만큼 내린다', () => {
+    expect(expected(1000, 1000)).toBe(0.5);
+    expect(rate(veteran(1000), veteran(1000))).toEqual({ winner: K_NORMAL / 2, loser: -K_NORMAL / 2 });
+  });
+
+  it('배치 중에는 더 크게 움직인다', () => {
+    expect(rate(rookie(RATING_START), rookie(RATING_START))).toEqual({ winner: K_PLACEMENT / 2, loser: -K_PLACEMENT / 2 });
+    // 배치 중인 사람과 아닌 사람이 만나면 각자 자기 K로 움직인다
+    expect(rate(rookie(1000), veteran(1000))).toEqual({ winner: K_PLACEMENT / 2, loser: -K_NORMAL / 2 });
+  });
+
+  it('강한 상대를 이기면 많이 오르고, 약한 상대를 이기면 조금 오른다', () => {
+    const upset = rate(veteran(1000), veteran(1200));
+    const routine = rate(veteran(1200), veteran(1000));
+    expect(upset.winner).toBeGreaterThan(K_NORMAL / 2);
+    expect(routine.winner).toBeLessThan(K_NORMAL / 2);
+    expect(upset.winner + routine.winner).toBe(K_NORMAL);
+    expect(upset.loser).toBe(-upset.winner);
+  });
+
+  it('아무리 차이가 나도 적어도 1점은 움직이고, 0점 아래로는 내려가지 않는다', () => {
+    expect(rate(veteran(3000), veteran(100))).toEqual({ winner: 1, loser: -1 });
+    expect(rate(veteran(1000), veteran(0)).loser).toBe(-0);
+    expect(rate(veteran(5), veteran(5)).loser).toBe(-5);
+  });
+
+  it('티어는 점수 구간으로 정해진다', () => {
+    expect(TIER_FLOORS.length).toBe(5);
+    expect(tierOf(0)).toBe(0);
+    expect(tierOf(RATING_START)).toBe(1);
+    expect(tierOf(TIER_FLOORS[2] - 1)).toBe(1);
+    expect(tierOf(TIER_FLOORS[2])).toBe(2);
+    expect(tierOf(9999)).toBe(4);
+    expect(toNextTier(TIER_FLOORS[2] - 7)).toBe(7);
+    expect(toNextTier(9999)).toBeNull();
   });
 });

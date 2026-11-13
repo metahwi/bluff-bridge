@@ -17,6 +17,8 @@ export interface RoomOptions {
   auto?: boolean;
   /** 이 계정들만 들어올 수 있다 (빠른 매칭). */
   reserved?: string[];
+  /** 순위전 방: 결과를 점수에 반영한다. */
+  ranked?: boolean;
 }
 
 /** 새 방을 만들고 코드를 돌려준다. 코드가 겹치면 다시 뽑는다. 실패하면 null. */

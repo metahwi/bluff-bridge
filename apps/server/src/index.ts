@@ -4,6 +4,7 @@ import { ROOM_CODE } from '@bluff-bridge/protocol';
 import { enabledProviders, getAuth, getUser } from './auth.ts';
 import { createRoom, roomStub } from './codes.ts';
 import { Matchmaker } from './matchmaker.ts';
+import { RANK_TABLES, getRank, topRanks } from './ranking.ts';
 import { RECORD_TABLES, getRecords } from './records.ts';
 import { GameRoom } from './room.ts';
 import { FEEDBACK_MAX, FEEDBACK_MIN, STORE_TABLES, purgeOldChat, recentChat, recentFeedback, saveFeedback } from './store.ts';
@@ -52,6 +53,8 @@ app.get('/api/me', async (c) => {
     user,
     providers: enabledProviders(c.env),
     records: user ? await getRecords(c.env.DB, user.id) : null,
+    // 순위전은 회원만 한다.
+    rank: user && !user.isAnonymous ? await getRank(c.env.DB, user.id) : null,
   });
 });
 
@@ -61,7 +64,7 @@ app.post('/api/admin/migrate', async (c) => {
   if (!token || c.req.header('Authorization') !== `Bearer ${token}`) return c.json({ error: 'forbidden' }, 403);
   const { toBeCreated, toBeAdded, runMigrations } = await getMigrations(getAuth(c.env, c.req.raw).options);
   await runMigrations();
-  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES].map((sql) => c.env.DB.prepare(sql)));
+  await c.env.DB.batch([...RECORD_TABLES, ...STORE_TABLES, ...RANK_TABLES].map((sql) => c.env.DB.prepare(sql)));
   return c.json({
     created: toBeCreated.map((t) => t.table),
     altered: toBeAdded.map((t) => t.table),
@@ -111,13 +114,21 @@ app.post('/api/rooms', async (c) => {
   return c.json({ error: '방을 만들지 못했어요. 다시 시도해 주세요.' }, 503);
 });
 
-/** 빠른 매칭 대기열. 짝이 정해지면 방 코드를 보내고 연결을 닫는다. */
+/** 순위표: 배치를 마친 사람 중 상위 20명. 누구나 볼 수 있다. */
+app.get('/api/ranking', async (c) => c.json({ top: await topRanks(c.env.DB, 20) }));
+
+/** 매칭 대기열(빠른 매칭, ?mode=ranked면 순위전). 짝이 정해지면 방 코드를 보내고 연결을 닫는다. */
 app.get('/ws/match', async (c) => {
   if (c.req.header('Upgrade')?.toLowerCase() !== 'websocket') return c.text('WebSocket only', 426);
   const user = await getUser(c.env, c.req.raw);
   if (!user) return c.text('login required', 401);
   const target = new URL('https://match/ws');
   target.searchParams.set('uid', user.id);
+  if (c.req.query('mode') === 'ranked') {
+    if (user.isAnonymous) return c.text('members only', 403);
+    target.searchParams.set('mode', 'ranked');
+    target.searchParams.set('rating', String((await getRank(c.env.DB, user.id)).rating));
+  }
   return c.env.MATCH.get(c.env.MATCH.idFromName('global')).fetch(new Request(target, c.req.raw));
 });
 
