@@ -7,7 +7,7 @@ import { DEFAULT_BOT } from '@bluff-bridge/engine';
 export type BotLevel = 'easy' | 'normal' | 'hard';
 
 export interface Settings {
-  /** 빠른 매칭에서 상대가 없으면 봇을 붙여 준다. 순위전에는 봇이 들어가지 않는다. */
+  /** 빠른 매칭에서 상대가 없으면 봇을 붙여 준다. 순위전에는 봇이 들어가지 않는다. 플레이어에게는 봇이라고 알리지 않는다. */
   botsEnabled: boolean;
   /** 봇을 붙이기 전에 사람을 기다리는 시간(초). */
   botWaitSec: number;
@@ -77,5 +77,11 @@ export const BOT_LEVELS: Record<BotLevel, BotConfig> = {
   hard: { bluffRate: 0.15, challengeBase: 0.08, challengeSlope: 0.13 },
 };
 
-/** 봇 이름. 사람과 헷갈리지 않게 이름에 '봇'을 넣는다. */
-export const BOT_NAMES = ['하마봇', '뻥쟁이봇', '주사위봇', '다리봇', '눈치봇'];
+/**
+ * 봇이 쓰는 닉네임. 다른 사람들이 쓰는 닉네임처럼 보이게 한다(봇인지는 관리자 페이지에서만 알 수 있다).
+ */
+export const BOT_NAMES = [
+  '콩이', '민트초코', '감자튀김', '라면왕', '초코송이', '하늘이', '도토리', '주말엔게임', '뻥튀기', '달고나',
+  '곰돌이', '수박바', '떡볶이킹', '졸린고양이', '바나나우유', '김밥천국', '눈사람', '호두과자', '참새', '보리차',
+  '월요병', '칼퇴요정', '점심뭐먹지', '야근싫어', '커피한잔', '산책가자', '귤까는중', '솜사탕', '찹쌀떡', '나무늘보',
+];

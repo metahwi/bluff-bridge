@@ -2,38 +2,11 @@
 // 데이터는 모두 /api/admin/* 에서 오고, 서버가 요청마다 관리자인지 다시 확인한다.
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
+import { BirdsEye } from './BirdsEye.tsx';
+import { Forbidden, api, useLoad, when } from './api.ts';
 import './admin.css';
 
 const TIERS = ['아기 하마', '꼬마 하마', '날쌘 하마', '대장 하마', '하마왕'];
-
-class Forbidden extends Error {}
-
-async function api<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`/api/admin/${path}`, { ...init, headers: { 'Content-Type': 'application/json', ...init?.headers } });
-  const body = (await res.json().catch(() => ({}))) as T & { error?: string };
-  if (res.status === 403) throw new Forbidden();
-  if (!res.ok) throw new Error(body.error ?? `요청이 실패했어요 (${res.status}).`);
-  return body;
-}
-
-const when = (value: unknown) => {
-  const d = new Date(typeof value === 'string' && /^\d+$/.test(value) ? Number(value) : (value as string | number));
-  return Number.isNaN(d.getTime()) ? '-' : d.toLocaleString('ko-KR', { dateStyle: 'short', timeStyle: 'short' });
-};
-
-/** 목록을 불러오는 공통 틀: 불러오는 중, 오류, 다시 불러오기. */
-function useLoad<T>(path: string, onForbidden: () => void) {
-  const [data, setData] = useState<T | null>(null);
-  const [error, setError] = useState('');
-  const reload = useCallback(() => {
-    setError('');
-    api<T>(path)
-      .then(setData)
-      .catch((e) => (e instanceof Forbidden ? onForbidden() : setError(e instanceof Error ? e.message : '불러오지 못했어요.')));
-  }, [path, onForbidden]);
-  useEffect(reload, [reload]);
-  return { data, error, reload, setData };
-}
 
 function Login({ onDone }: { onDone: () => void }) {
   const [password, setPassword] = useState('');
@@ -64,51 +37,6 @@ function Login({ onDone }: { onDone: () => void }) {
       )}
       <button disabled={busy || !password}>{busy ? '확인하는 중…' : '들어가기'}</button>
     </form>
-  );
-}
-
-interface OverviewData {
-  users: number;
-  members: number;
-  guests: number;
-  matchesDay: number;
-  matchesWeek: number;
-  matches: number;
-  botMatches: number;
-  ranked: number;
-  rankedPlayers: number;
-  chat: number;
-  chatKeepDays: number;
-  feedback: number;
-}
-
-function Overview({ onForbidden }: { onForbidden: () => void }) {
-  const { data, error, reload } = useLoad<OverviewData>('overview', onForbidden);
-  if (error) return <p className="admError">{error}</p>;
-  if (!data) return <p>불러오는 중…</p>;
-  const cards: [string, number, string][] = [
-    ['회원', data.members, `게스트 ${data.guests}명 별도`],
-    ['오늘 한 판', data.matchesDay, `최근 7일 ${data.matchesWeek}판 · 전체 ${data.matches}판`],
-    ['봇과 한 판', data.botMatches, '전체 기간'],
-    ['순위전', data.ranked, `배치를 마친 사람 ${data.rankedPlayers}명`],
-    ['보관 중인 채팅', data.chat, `${data.chatKeepDays}일 지나면 자동 삭제`],
-    ['받은 의견', data.feedback, '의견 탭에서 확인'],
-  ];
-  return (
-    <>
-      <div className="admCards">
-        {cards.map(([label, value, note]) => (
-          <div key={label} className="admCard">
-            <span>{label}</span>
-            <b>{value.toLocaleString('ko-KR')}</b>
-            <small>{note}</small>
-          </div>
-        ))}
-      </div>
-      <button className="admGhost" onClick={reload}>
-        새로 고침
-      </button>
-    </>
   );
 }
 
@@ -170,7 +98,7 @@ function Settings({ onForbidden }: { onForbidden: () => void }) {
       <h2>봇</h2>
       <Switch
         label="봇 상대"
-        hint="빠른 매칭에서 아래 시간 동안 사람을 못 만나면 봇이 상대로 들어옵니다. 이름에 '봇'이 붙고, 순위전에는 들어가지 않습니다."
+        hint="빠른 매칭에서 아래 시간 동안 사람을 못 만나면 봇이 상대로 들어옵니다. 플레이어에게는 봇이라고 표시되지 않고(평범한 닉네임을 씁니다), 이 관리자 페이지에서만 알 수 있습니다. 순위전에는 들어가지 않습니다."
         on={draft.botsEnabled}
         onChange={(on) => save({ ...draft, botsEnabled: on })}
       />
@@ -415,12 +343,30 @@ function ChatLog({ onForbidden }: { onForbidden: () => void }) {
   );
 }
 
+/** 관리자가 한 일의 기록: 로그인(성공·실패), 설정 변경, 점수 수정, 삭제. */
+function ActivityLog({ onForbidden }: { onForbidden: () => void }) {
+  const { data, error } = useLoad<{ log: { id: number; at: number; ip: string; action: string; detail: string }[] }>('log', onForbidden);
+  if (error) return <p className="admError">{error}</p>;
+  if (!data) return <p>불러오는 중…</p>;
+  return (
+    <>
+      <small>최근 200건. 90일이 지나면 지워집니다. 내가 하지 않은 로그인이나 로그인 실패가 많으면 암호를 바꿔 주세요.</small>
+      <Table
+        empty="아직 기록이 없어요."
+        head={['때', '한 일', '내용', '접속 주소']}
+        rows={data.log.map((l) => [when(l.at), l.action === '로그인 실패' ? <b className="admError">{l.action}</b> : l.action, <span className="admText">{l.detail || '-'}</span>, l.ip])}
+      />
+    </>
+  );
+}
+
 const TABS = [
-  ['overview', '개요'],
+  ['overview', '한눈에 보기'],
   ['settings', '게임 설정'],
   ['users', '회원'],
   ['feedback', '의견'],
   ['chat', '채팅'],
+  ['log', '활동 기록'],
 ] as const;
 type Tab = (typeof TABS)[number][0];
 
@@ -447,7 +393,7 @@ export default function Admin() {
     );
   }
   return (
-    <main className="adm">
+    <main className={'adm' + (tab === 'overview' ? ' wide' : '')}>
       <header className="admHead">
         <h1>하마하마 관리자</h1>
         <nav>
@@ -468,11 +414,12 @@ export default function Admin() {
         </button>
       </header>
       <section className="admBody">
-        {tab === 'overview' && <Overview onForbidden={kick} />}
+        {tab === 'overview' && <BirdsEye onForbidden={kick} />}
         {tab === 'settings' && <Settings onForbidden={kick} />}
         {tab === 'users' && <Users onForbidden={kick} />}
         {tab === 'feedback' && <Feedback onForbidden={kick} />}
         {tab === 'chat' && <ChatLog onForbidden={kick} />}
+        {tab === 'log' && <ActivityLog onForbidden={kick} />}
       </section>
     </main>
   );

@@ -55,3 +55,52 @@ main.adm { max-width: 1100px; margin: 0 auto; padding: 16px; display: block; }
 .admTable td:has(.admText) { white-space: normal; min-width: 260px; }
 .admText { white-space: pre-wrap; overflow-wrap: anywhere; }
 .admTag { display: inline-block; padding: 0 6px; border-radius: 999px; background: #eef0f3; font-size: 11px; color: #656d76; }
+
+/* ── 한눈에 보기 ── */
+main.adm.wide { max-width: 1320px; }
+.admSection + .admSection, .admGrid.two { margin-top: 22px; }
+.admSection h2 { margin: 0 0 10px; display: flex; align-items: baseline; gap: 10px; }
+.admSection h2 small { display: inline; font-weight: 400; }
+.admLive { display: grid; grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); gap: 10px; margin-bottom: 12px; }
+.admLive > div { padding: 12px 14px; border: 1px solid #d8dde3; border-radius: 8px; background: #fafbfc; }
+.admLive > div.hot { border-color: #1d6b45; background: #f0f7f2; }
+.admLive b { display: block; font-size: 30px; line-height: 1.2; font-variant-numeric: tabular-nums; }
+.admLive b small { display: inline; font-size: 18px; }
+.admLive span { font-size: 13px; color: #656d76; }
+.admCard small .up { color: #1b6e2b; } .admCard small .down { color: #b3261e; }
+.admCard small span { display: inline; }
+.admGrid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 12px; }
+.admGrid.two { grid-template-columns: repeat(auto-fit, minmax(380px, 1fr)); gap: 22px; }
+.admGrid.two .admSection { margin-top: 0; }
+
+.admChart { margin: 0; padding: 12px 14px; border: 1px solid #d8dde3; border-radius: 8px; min-width: 0; }
+.admChart figcaption { display: flex; flex-wrap: wrap; align-items: baseline; justify-content: space-between; gap: 2px 10px; margin-bottom: 6px; }
+.admChartNow { font-size: 12px; color: #52514e; font-variant-numeric: tabular-nums; }
+.admLegend { list-style: none; margin: 0 0 6px; padding: 0; display: flex; flex-wrap: wrap; gap: 2px 12px; font-size: 12px; color: #52514e; }
+.admLegend i { display: inline-block; width: 10px; height: 10px; margin-right: 5px; border-radius: 2px; vertical-align: -1px; }
+.admPlot { display: flex; gap: 6px; height: 170px; }
+.admAxis { display: flex; flex-direction: column; justify-content: space-between; padding-bottom: 20px; font-size: 11px; color: #8a8f98; text-align: right; min-width: 18px; font-variant-numeric: tabular-nums; }
+.admCols { flex: 1; display: flex; align-items: stretch; gap: 0; min-width: 0; background: linear-gradient(#e6e9ed, #e6e9ed) 0 0 / 100% 1px no-repeat, linear-gradient(#eef0f3, #eef0f3) 0 calc((100% - 20px) / 2) / 100% 1px no-repeat; }
+/* 막대 하나는 가늘어도, 누르거나 가리키는 자리는 그 날의 칸 전체다 */
+.adm button.admCol { flex: 1; min-width: 0; min-height: 0; display: flex; flex-direction: column; padding: 0 2px; background: transparent; border: 0; border-radius: 0; color: inherit; font-weight: 400; cursor: default; }
+.adm button.admCol:hover:not(:disabled), .adm button.admCol.on { background: #f1f3f5; }
+.admStack { flex: 1; display: flex; flex-direction: column-reverse; align-items: center; gap: 2px; border-bottom: 1px solid #c9ced6; min-height: 0; }
+.admStack i { display: block; width: min(22px, 100%); min-height: 2px; }
+.admStack i:last-child { border-radius: 4px 4px 0 0; }
+.admCol em { height: 20px; line-height: 20px; font-style: normal; font-size: 11px; color: #8a8f98; font-variant-numeric: tabular-nums; }
+.admChart details { margin-top: 6px; font-size: 12px; }
+.admChart summary { cursor: pointer; color: #656d76; }
+.admChart details .admTable th, .admChart details .admTable td { padding: 3px 8px; }
+
+.admRows { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+.admRows li { display: grid; grid-template-columns: 92px minmax(0, 1fr) 76px; align-items: center; gap: 2px 8px; font-size: 13px; }
+.admTrack { display: block; height: 12px; }
+.admTrack i { display: block; height: 100%; min-width: 2px; background: #2a78d6; border-radius: 0 4px 4px 0; }
+.admRows b { font-variant-numeric: tabular-nums; }
+.admRows b small { display: inline; font-weight: 400; }
+.admRows li > small { grid-column: 2 / -1; }
+
+.admFeed { list-style: none; margin: 0 0 8px; padding: 0; }
+.admFeed li { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 8px; padding: 7px 0; border-bottom: 1px solid #e6e9ed; }
+.admFeedMain { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.admFeed small { display: inline; }

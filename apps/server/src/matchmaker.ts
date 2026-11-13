@@ -29,6 +29,8 @@ const RANGE_START = 100;
 const RANGE_STEP = 50;
 const STEP_MS = 5_000;
 const ANYONE_MS = 30_000;
+/** 봇이 꺼져 있을 때, 빠른 매칭 대기자가 있는 동안 설정을 다시 확인하는 간격. */
+const RECHECK_MS = 10_000;
 
 /** 이만큼 기다린 사람이 받아들이는 점수 차. */
 function rangeAfter(waitedMs: number): number {
@@ -100,6 +102,10 @@ export class Matchmaker extends DurableObject<Env> {
   }
 
   override async fetch(request: Request): Promise<Response> {
+    // 관리자 페이지용: 지금 줄 서 있는 사람 수
+    if (new URL(request.url).pathname === '/stats') {
+      return Response.json({ quick: this.waiting('quick').length, ranked: this.waiting('ranked').length });
+    }
     const params = new URL(request.url).searchParams;
     const uid = params.get('uid');
     if (!uid) return new Response('bad request', { status: 400 });
@@ -153,7 +159,8 @@ export class Matchmaker extends DurableObject<Env> {
     const quick = this.waiting('quick');
     if (quick.length) {
       const settings = await getSettings(this.env.DB);
-      if (settings.botsEnabled) times.push(Math.max(now + 200, quick[0]!.att.since + settings.botWaitSec * 1000));
+      // 봇이 꺼져 있어도, 기다리는 사람이 있는 동안에는 가끔 다시 본다(그사이 관리자가 봇을 켰을 수 있다).
+      times.push(settings.botsEnabled ? Math.max(now + 200, quick[0]!.att.since + settings.botWaitSec * 1000) : now + RECHECK_MS);
     }
     if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
   }

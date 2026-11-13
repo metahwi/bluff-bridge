@@ -29,3 +29,15 @@ export function cleanChat(raw: string): string {
   text = text.replace(bannedPattern, (m) => '♥'.repeat(Math.max(2, [...m.replace(/[\s._\-*~!1]/g, '')].length)));
   return text.trim();
 }
+
+/**
+ * 닉네임 다듬기. 닉네임은 방, 전적, 공개 순위표에 그대로 보이므로 채팅과 같은 기준으로 욕설을 가린다.
+ * 다듬고 나서 남는 글자가 없으면 ''를 돌려준다.
+ */
+export function cleanName(raw: string): string {
+  return raw
+    .replace(/[\p{Cc}\p{Cf}\p{Zl}\p{Zp}]/gu, ' ')
+    .replace(/\s+/g, ' ')
+    .replace(bannedPattern, (m) => '♥'.repeat(Math.max(2, [...m.replace(/[\s._\-*~!1]/g, '')].length)))
+    .trim();
+}

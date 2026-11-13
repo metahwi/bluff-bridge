@@ -1,6 +1,7 @@
 import { betterAuth } from 'better-auth';
 import { anonymous } from 'better-auth/plugins';
 import { NAME_MAX } from '@bluff-bridge/protocol';
+import { cleanName } from './chat.ts';
 import { hashPassword, verifyPassword } from './password.ts';
 import { moveRecords } from './records.ts';
 import { eraseUser, moveChat } from './store.ts';
@@ -31,6 +32,22 @@ function build(env: Env, baseURL: string) {
     trustedOrigins: env.BETTER_AUTH_URL
       ? []
       : ['http://localhost:5173', 'http://127.0.0.1:5173', 'http://localhost:8787', 'http://127.0.0.1:8787'],
+    // 로그인·가입을 마구 두드리지 못하게 주소별로 횟수를 센다. 서버가 여러 곳에 떠 있으므로 DB에 적는다.
+    // 학교·회사처럼 여럿이 한 주소를 쓰는 곳이 있어 게스트 입장은 넉넉하게, 비밀번호 대입은 빡빡하게 잡았다.
+    rateLimit: {
+      enabled: true,
+      storage: 'database',
+      window: 60,
+      max: 120,
+      customRules: {
+        '/sign-in/email': { window: 60, max: 8 },
+        '/sign-up/email': { window: 3600, max: 30 },
+        '/sign-in/anonymous': { window: 3600, max: 200 },
+        '/delete-user': { window: 60, max: 10 },
+      },
+    },
+    // Cloudflare가 알려 주는 접속 주소만 믿는다(요청이 스스로 적어 보내는 다른 헤더는 꾸밀 수 있다).
+    advanced: { ipAddress: { ipAddressHeaders: ['cf-connecting-ip'] } },
     // 이메일 + 비밀번호 가입. 메일을 보내는 기능이 아직 없어서 이메일 인증과 비밀번호 재설정은 하지 않는다.
     emailAndPassword: {
       enabled: true,
@@ -104,7 +121,7 @@ export async function getUser(env: Env, request: Request): Promise<SessionUser |
   const user = session.user as typeof session.user & { isAnonymous?: boolean | null };
   return {
     id: user.id,
-    name: user.name.trim().slice(0, NAME_MAX) || '손님',
+    name: [...cleanName(user.name)].slice(0, NAME_MAX).join('') || '손님',
     isAnonymous: !!user.isAnonymous,
   };
 }

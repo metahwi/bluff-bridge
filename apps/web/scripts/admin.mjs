@@ -24,17 +24,24 @@ await page.getByText('암호가 맞지 않아요.').waitFor();
 await shot(page, 'login');
 await page.getByLabel('관리자 암호').fill(password);
 await page.getByRole('button', { name: '들어가기' }).click();
-await page.getByText('오늘 한 판').waitFor();
+await page.getByText('진행 중인 판').waitFor();
 await shot(page, 'overview');
 
 await tab('게임 설정').click();
 const bots = page.getByRole('switch', { name: '봇 상대' });
 await bots.waitFor();
-if ((await bots.getAttribute('aria-checked')) !== 'true') await bots.click();
-await page.getByText('저장했어요.').waitFor();
+// 이미 켜져 있으면(앞선 실행이 도중에 멈춘 경우) 그대로 둔다
+if ((await bots.getAttribute('aria-checked')) !== 'true') {
+  await bots.click();
+  await page.getByText('저장했어요.').waitFor();
+}
 await page.getByRole('spinbutton').first().fill('3');
-await page.getByRole('button', { name: '저장', exact: true }).click();
-await page.getByText('저장했어요.').waitFor();
+const saveButton = page.getByRole('button', { name: '저장', exact: true });
+// 값이 이미 같으면 저장 단추가 꺼져 있다
+if (await saveButton.isEnabled()) {
+  await saveButton.click();
+  await page.getByText('저장했어요.').waitFor();
+}
 await shot(page, 'settings');
 
 for (const [name, wait, file] of [
@@ -50,7 +57,7 @@ for (const [name, wait, file] of [
 
 // 새로 고침해도 로그인이 유지되고, 다른 브라우저(쿠키 없음)에서는 로그인 화면이 나온다
 await page.reload();
-await page.getByText('오늘 한 판').waitFor();
+await page.getByText('진행 중인 판').waitFor();
 const stranger = await (await browser.newContext()).newPage();
 await stranger.goto(`${base}/admin`);
 await stranger.getByLabel('관리자 암호').waitFor();
@@ -87,6 +94,18 @@ for (let turn = 0; turn < 4; turn++) {
 }
 await player.waitForTimeout(3000);
 await shot(player, 'bot-playing');
+// 봇과 판이 진행 중일 때의 한눈에 보기
+await tab('한눈에 보기').click();
+await page.getByText('게임 중').first().waitFor({ timeout: 20000 });
+await page.waitForTimeout(800);
+await page.screenshot({ path: `${out}admin-eye.png`, fullPage: true });
+console.log('saved admin-eye.png');
+await page.getByRole('button', { name: /^\d\d-\d\d: / }).nth(13).hover();
+await page.waitForTimeout(300);
+await shot(page, 'eye-hover');
+await tab('활동 기록').click();
+await page.getByText('설정 변경').first().waitFor();
+await shot(page, 'log');
 await player.close();
 
 // 봇을 다시 끈다

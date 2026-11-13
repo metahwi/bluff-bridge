@@ -19,6 +19,8 @@ import type { Env } from './index.ts';
 import { cleanChat } from './chat.ts';
 import { saveMatch } from './records.ts';
 import { saveChat } from './store.ts';
+import { forgetRoom, reportRoom } from './live.ts';
+import type { GameMode } from './live.ts';
 import { BOT_LEVELS, BOT_NAMES, getSettings } from './settings.ts';
 import type { BotLevel } from './settings.ts';
 import type { MatchRecord } from './records.ts';
@@ -36,7 +38,10 @@ interface Seat {
    * game.players의 번호와 같아야 해서 자리를 지우지 않고 이 표시만 해 둔다.
    */
   left?: boolean;
-  /** 사람이 아니라 서버가 두는 봇. 접속이 없고, 자기 차례가 오면 서버가 대신 둔다. */
+  /**
+   * 사람이 아니라 서버가 두는 봇. 접속이 없고, 자기 차례가 오면 서버가 대신 둔다.
+   * 이 표시는 서버 안에서만 쓰고 브라우저로는 보내지 않는다(관리자 페이지에서만 봇인지 알 수 있다).
+   */
   bot?: boolean;
 }
 
@@ -89,6 +94,8 @@ export class GameRoom extends DurableObject<Env> {
   private pendingRecord: MatchRecord | null = null;
   /** 사람마다 마지막으로 채팅을 보낸 시각(도배 방지). 저장하지 않는다. */
   private lastChat = new Map<string, number>();
+  /** 관리자 페이지의 '진행 중인 방'에 마지막으로 알린 내용. 달라졌을 때만 다시 알린다. */
+  private reported = '';
 
   constructor(ctx: DurableObjectState, env: Env) {
     super(ctx, env);
@@ -101,6 +108,8 @@ export class GameRoom extends DurableObject<Env> {
   }
 
   private async destroy(): Promise<void> {
+    const code = this.room?.code;
+    if (code) this.ctx.waitUntil(forgetRoom(this.env.DB, code).catch(() => null));
     this.room = null;
     await this.ctx.storage.deleteAlarm();
     await this.ctx.storage.deleteAll();
@@ -147,7 +156,32 @@ export class GameRoom extends DurableObject<Env> {
     if (times.length) await this.ctx.storage.setAlarm(Math.min(...times));
     else await this.ctx.storage.deleteAlarm();
 
+    this.report(room);
     this.broadcast(room);
+  }
+
+  private modeOf(room: Room): GameMode {
+    return room.ranked ? 'ranked' : room.bot ? 'bot' : room.auto ? 'quick' : 'friend';
+  }
+
+  /** 관리자 페이지의 '진행 중인 방' 목록에 이 방의 상태를 알린다. 눈에 띄는 변화가 있을 때만 쓴다. */
+  private report(room: Room): void {
+    const humans = room.seats.filter((s) => !s.bot);
+    const info = {
+      code: room.code,
+      mode: this.modeOf(room),
+      status: room.status,
+      humans: humans.length,
+      online: humans.filter((s) => s.offlineSince === null).length,
+      bots: room.seats.length - humans.length,
+      names: room.seats.map((s) => s.name + (s.bot ? ' [봇]' : '')).join(', '),
+      round: room.game?.round ?? 0,
+    };
+    // 턴이 넘어갈 때마다 쓰지 않도록 5턴 단위로만 본다.
+    const key = JSON.stringify({ ...info, round: Math.floor(info.round / 5) });
+    if (key === this.reported) return;
+    this.reported = key;
+    this.ctx.waitUntil(reportRoom(this.env.DB, info).catch(() => null));
   }
 
   private view(room: Room, me: number): RoomView {
@@ -162,7 +196,6 @@ export class GameRoom extends DurableObject<Env> {
         ready: s.ready,
         rematch: s.rematch,
         online: s.offlineSince === null,
-        bot: !!s.bot,
       })),
       me,
       game: room.game ? viewFor(room.game, me) : null,
@@ -198,6 +231,7 @@ export class GameRoom extends DurableObject<Env> {
       const winner = state.winner!;
       this.pendingRecord = {
         roomCode: room.code,
+        mode: this.modeOf(room),
         rounds: state.round,
         reason: events.some((e) => e.type === 'forfeit')
           ? 'forfeit'

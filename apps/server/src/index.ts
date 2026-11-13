@@ -2,6 +2,7 @@ import { Hono } from 'hono';
 import { ROOM_CODE } from '@bluff-bridge/protocol';
 import { admin } from './admin.ts';
 import { enabledProviders, getAuth, getUser } from './auth.ts';
+import { purgeLive } from './live.ts';
 import { getSettings } from './settings.ts';
 import { createRoom, roomStub } from './codes.ts';
 import { Matchmaker } from './matchmaker.ts';
@@ -45,6 +46,12 @@ app.use('*', async (c, next) => {
   await next();
   // 한 번 https로 들어온 브라우저는 앞으로 http 주소를 쳐도 스스로 https로 바꿔 열게 한다.
   if (canonical?.startsWith('https://')) c.header('Strict-Transport-Security', 'max-age=31536000');
+  // API 응답에 붙이는 보안 헤더(화면 파일의 헤더는 apps/web/public/_headers에서 붙인다).
+  c.header('X-Content-Type-Options', 'nosniff');
+  c.header('X-Frame-Options', 'DENY');
+  c.header('Referrer-Policy', 'strict-origin-when-cross-origin');
+  // 계정·관리자 정보가 중간 저장소에 남지 않게 한다.
+  if (!c.res.headers.has('Cache-Control')) c.header('Cache-Control', 'no-store');
 });
 
 app.on(['GET', 'POST'], '/api/auth/*', (c) => getAuth(c.env, c.req.raw).handler(c.req.raw));
@@ -93,6 +100,17 @@ app.post('/api/rooms', async (c) => {
   return c.json({ error: '방을 만들지 못했어요. 다시 시도해 주세요.' }, 503);
 });
 
+/**
+ * 실시간 연결(WebSocket)은 우리 사이트에서 연 것만 받는다. 다른 사이트의 페이지가 방문자의 로그인 쿠키를 빌려
+ * 연결하는 것을 막는다. 로컬 개발(BETTER_AUTH_URL 없음)에서는 화면 서버와 주소가 달라 검사하지 않는다.
+ */
+app.use('/ws/*', async (c, next) => {
+  const home = c.env.BETTER_AUTH_URL;
+  const origin = c.req.header('Origin');
+  if (home && origin && new URL(origin).host !== new URL(home).host) return c.text('forbidden origin', 403);
+  await next();
+});
+
 /** 순위표: 배치를 마친 사람 중 상위 20명. 누구나 볼 수 있다. */
 app.get('/api/ranking', async (c) => c.json({ top: await topRanks(c.env.DB, 20) }));
 
@@ -134,6 +152,14 @@ export default {
   fetch: app.fetch,
   /** 매일 한 번(wrangler.jsonc의 crons) 보관 기간이 지난 채팅을 지운다. */
   async scheduled(_event: ScheduledController, env: Env, ctx: ExecutionContext): Promise<void> {
+    // 사라진 방의 흔적, 오래된 관리자 로그인 실패 기록과 활동 기록(90일)도 함께 치운다.
+    ctx.waitUntil(
+      Promise.all([
+        purgeLive(env.DB),
+        env.DB.prepare('DELETE FROM admin_fails WHERE at < ?').bind(Date.now() - 24 * 60 * 60 * 1000).run(),
+        env.DB.prepare('DELETE FROM admin_log WHERE at < ?').bind(Date.now() - 90 * 24 * 60 * 60 * 1000).run(),
+      ]).catch(() => null),
+    );
     ctx.waitUntil(purgeOldChat(env.DB).then((n) => console.log(`오래된 채팅 ${n}줄 삭제`)));
   },
 } satisfies ExportedHandler<Env>;

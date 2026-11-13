@@ -517,8 +517,16 @@ try {
   if (botMatch?.t === 'matched') {
     const human = await connect(botMatch.code, '혼자', lonelyCookie);
     await until(() => human.room?.status === 'playing', '봇과의 판 시작');
-    const botSeat = human.room!.seats.findIndex((s) => s.bot);
-    check(botSeat >= 0 && /봇$/.test(human.room!.seats[botSeat]!.name) && human.room!.seats.filter((s) => s.bot).length === 1, `봇 자리가 이상함: ${JSON.stringify(human.room!.seats)}`);
+    // 상대가 봇이라는 것은 브라우저로 가지 않는다. 관리자 페이지의 '진행 중인 방'에서만 알 수 있다.
+    const botSeat = 1 - human.room!.me;
+    check(human.room!.seats.length === 2 && !JSON.stringify(human.room).includes('bot') && !human.room!.seats[botSeat]!.name.includes('봇'), `봇이라는 표시가 브라우저로 감: ${JSON.stringify(human.room!.seats)}`);
+    type LiveInfo = { queue: { quick: number; ranked: number }; rooms: { code: string; mode: string; bots: number; humans: number; names: string }[] };
+    let seen: LiveInfo['rooms'][number] | undefined;
+    await until(async () => {
+      seen = ((await (await asAdmin('live')).json()) as LiveInfo).rooms.find((x) => x.code === botMatch.code);
+      return !!seen;
+    }, '진행 중인 방 목록에 나타남');
+    check(seen?.mode === 'bot' && seen.bots === 1 && seen.humans === 1 && seen.names.includes('[봇]'), `관리자 목록의 봇 방 정보가 다름: ${JSON.stringify(seen)}`);
     check(human.room!.ranked === false, '봇 방이 순위전으로 표시됨');
     // 사람은 바로바로 두고, 봇이 스스로 굴리고·선언하고·응답해서 판이 여러 턴 나아가는지 본다
     autoplay(human);
@@ -529,6 +537,17 @@ try {
     human.ws.close();
   }
   check(((await (await fetch(`${base}/api/me`)).json()) as { notice?: string }).notice === noticeText, '공지가 첫 화면 정보에 실리지 않음');
+  // 한눈에 보기용 추이: 오늘 끝난 판이 종류별로 잡히고, 활동 기록에 설정 변경이 남는다
+  const trend = (await (await asAdmin('trends')).json()) as { days: Record<string, number>[]; recent: { mode: string; players: string }[] };
+  const todayRow = trend.days.at(-1)!;
+  check(trend.days.length === 14 && todayRow.friend! >= 1 && todayRow.ranked! >= 1 && todayRow.players! >= 4, `오늘 추이가 이상함: ${JSON.stringify(todayRow)}`);
+  const logged = ((await (await asAdmin('log')).json()) as { log: { action: string; detail: string }[] }).log;
+  check(logged.some((l) => l.action === '설정 변경' && l.detail.includes('botsEnabled')) && logged.some((l) => l.action === '로그인 실패'), '관리자 활동 기록에 설정 변경이나 로그인 실패가 없음');
+  // 다른 사이트에서 보낸 것처럼 꾸민 변경 요청은 쿠키가 있어도 거절된다
+  check((await asAdmin('settings', { method: 'PUT', body: '{"notice":"x"}', headers: { Origin: 'https://evil.example' } })).status === 403, '다른 사이트에서 온 관리자 요청이 통과함');
+  // 욕설이 들어간 닉네임은 가려져서 보인다
+  const rude = await guest('시발하마');
+  check((await me(rude)).user?.name === '♥♥하마', `닉네임의 욕설이 가려지지 않음: ${(await me(rude)).user?.name}`);
   // 순위전 줄에는 봇이 오지 않는다
   const solo = await newMember('솔로');
   const soloLine = line(solo.cookie, 'ranked');

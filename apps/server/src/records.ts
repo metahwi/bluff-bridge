@@ -1,5 +1,15 @@
 // 전적 저장과 조회 (D1).
 
+/** 나중에 추가한 열. 이미 있으면 실패하므로 migrate가 하나씩 따로 실행하고 실패는 넘어간다. */
+export const RECORD_ALTERS = [
+  'ALTER TABLE matches ADD COLUMN mode TEXT',
+];
+/** 종류를 기록하기 전의 판에 알 수 있는 만큼 종류를 채운다(여러 번 실행해도 된다). */
+export const RECORD_BACKFILL = [
+  "UPDATE matches SET mode = 'ranked' WHERE mode IS NULL AND id IN (SELECT match_id FROM rating_changes)",
+  "UPDATE matches SET mode = 'bot' WHERE mode IS NULL AND id IN (SELECT match_id FROM match_players WHERE user_id LIKE 'bot-%')",
+];
+
 export const RECORD_TABLES = [
   `CREATE TABLE IF NOT EXISTS matches (
     id TEXT PRIMARY KEY,
@@ -29,12 +39,30 @@ export interface MatchRecord {
   roomCode: string;
   rounds: number;
   reason: EndReason;
+  /** 판의 종류: friend(친구 방), quick(빠른 매칭), ranked(순위전), bot(봇과). */
+  mode?: string;
   players: { userId: string; name: string; finished: number; lost: number; won: boolean }[];
 }
 
 /** 판 결과를 저장하고 그 판의 id를 돌려준다. */
 export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<string> {
   const id = crypto.randomUUID();
+  const players = rec.players.map((p, seat) =>
+    db
+      .prepare('INSERT INTO match_players (match_id, user_id, seat, name, finished, lost, won) VALUES (?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, p.userId, seat, p.name, p.finished, p.lost, p.won ? 1 : 0),
+  );
+  try {
+    await db.batch([
+      db
+        .prepare('INSERT INTO matches (id, room_code, player_count, rounds, reason, ended_at, mode) VALUES (?, ?, ?, ?, ?, ?, ?)')
+        .bind(id, rec.roomCode, rec.players.length, rec.rounds, rec.reason, Date.now(), rec.mode ?? null),
+      ...players,
+    ]);
+    return id;
+  } catch {
+    // 배포 직후 아직 mode 열이 없는 잠깐 동안에도 판 기록은 남긴다.
+  }
   await db.batch([
     db
       .prepare('INSERT INTO matches (id, room_code, player_count, rounds, reason, ended_at) VALUES (?, ?, ?, ?, ?, ?)')
