@@ -56,7 +56,7 @@ function Records({ me, onJoin }: { me: Me; onJoin: (mode: 'login' | 'signup') =>
         <div className="lockNote">
           <p>
             <b>전적은 가입한 사람만 볼 수 있어요.</b>
-            {me.guestPlayed ? ` 지금까지 한 ${me.guestPlayed}판이 저장돼 있고, 가입하면 그대로 옮겨져요.` : ' 가입하면 한 판 한 판이 여기에 쌓여요.'}
+            {' '}가입하면 그때부터 한 판 한 판이 여기에 쌓여요.
           </p>
           <div className="row">
             <button onClick={() => onJoin('signup')}>회원가입하고 전적 보기</button>

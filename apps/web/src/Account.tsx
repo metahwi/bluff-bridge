@@ -111,7 +111,7 @@ export function Account({
     <section className="panel account join" ref={box}>
       <h2>가입하면 더 재미있어요</h2>
       <ul className="perks">
-        <li>내 전적을 볼 수 있어요{me.guestPlayed ? ` (지금까지 한 ${me.guestPlayed}판도 그대로 옮겨져요)` : ''}</li>
+        <li>이긴 판, 진 판이 내 전적으로 쌓여요</li>
         <li>순위전에 나가 티어를 올리고 순위표에 이름을 올려요</li>
         <li>휴대폰과 컴퓨터에서 같은 계정으로 이어서 해요</li>
       </ul>

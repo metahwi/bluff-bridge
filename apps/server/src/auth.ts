@@ -91,7 +91,8 @@ function build(env: Env, baseURL: string) {
       anonymous({
         emailDomainName: 'guest.invalid',
         generateName: () => '손님',
-        // 게스트가 가입하거나 로그인하면 게스트 때의 전적과 채팅 기록을 그 계정으로 옮긴다.
+        // 게스트가 가입하거나 로그인하면 게스트 때의 참가 표시와 채팅 기록을 그 계정 것으로 바꾼다
+        // (같은 사람이 두 명으로 세어지지 않게). 게스트 때의 판은 전적으로는 보이지 않는다.
         onLinkAccount: async ({ anonymousUser, newUser }) => {
           await moveRecords(env.DB, anonymousUser.user.id, newUser.user.id);
           await moveChat(env.DB, anonymousUser.user.id, newUser.user.id);

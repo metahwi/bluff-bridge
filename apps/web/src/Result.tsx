@@ -137,9 +137,9 @@ export function Result({
       </div>
       {onSignup && (
         <p className="joinNudge">
-          가입하면 방금 한 판을 포함해 내 전적을 볼 수 있고, 순위전에도 나갈 수 있어요.
+          가입하면 다음 판부터 내 전적이 쌓이고, 순위전에도 나갈 수 있어요.
           <button className="small" onClick={onSignup}>
-            가입하고 전적 남기기
+            가입하고 전적 쌓기
           </button>
         </p>
       )}

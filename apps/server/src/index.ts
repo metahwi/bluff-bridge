@@ -66,10 +66,8 @@ app.get('/api/me', async (c) => {
     notice: (await getSettings(c.env.DB)).notice,
     // 방문 집계(Cloudflare Web Analytics) 토큰. 비어 있으면 화면이 집계 스크립트를 붙이지 않는다.
     analytics: (await getSettings(c.env.DB)).analyticsToken,
-    // 전적은 회원에게만 보여 준다. 게스트의 판도 계속 기록하지만(가입하면 그대로 옮겨진다) 화면에는
-    // 몇 판을 했는지만 알려 준다.
+    // 전적은 회원만 있다. 게스트의 전적은 저장하지도, 보여 주지도 않는다.
     records: user && !user.isAnonymous ? await getRecords(c.env.DB, user.id) : null,
-    guestPlayed: user?.isAnonymous ? (await getRecords(c.env.DB, user.id)).played : 0,
     // 순위전은 회원만 한다.
     rank: user && !user.isAnonymous ? await getRank(c.env.DB, user.id) : null,
   });
@@ -150,6 +148,8 @@ app.get('/ws/room/:code', async (c) => {
   const target = new URL('https://room/ws');
   target.searchParams.set('uid', user.id);
   target.searchParams.set('name', user.name);
+  // 게스트의 전적은 남기지 않으므로, 방이 누가 게스트인지 알아야 한다.
+  if (user.isAnonymous) target.searchParams.set('guest', '1');
   return roomStub(c.env, code).fetch(new Request(target, c.req.raw));
 });
 

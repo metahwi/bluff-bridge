@@ -17,8 +17,6 @@ export interface Me {
     won: number;
     recent: { endedAt: number; won: boolean; opponents: string; rounds: number; reason: string }[];
   } | null;
-  /** 게스트로 지금까지 한 판 수. 전적은 회원에게만 보이므로, 게스트에게는 이 숫자만 온다. */
-  guestPlayed?: number;
   /** 순위전 정보. 회원만 있다(게스트는 null). */
   rank: {
     rating: number;

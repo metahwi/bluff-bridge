@@ -233,7 +233,7 @@ const winnerIsA = g.winner === a.room!.me;
 // 전적은 회원에게만 보인다. 게스트에게는 몇 판 했는지만 온다(기록은 남아 있다가 가입하면 옮겨진다).
 const [meA, meB] = [await me(cookieA), await me(cookieB)];
 check(meA.records === null && meB.records === null, '게스트에게 전적이 내려감');
-check(meA.guestPlayed === 1 && meB.guestPlayed === 1, `게스트의 판 수가 다름: ${meA.guestPlayed}, ${meB.guestPlayed}`);
+check(!('guestPlayed' in meA), '게스트의 판 수가 내려감');
 
 // 6. 다시 하기: 모두 눌러야 시작한다
 for (const x of all) x.onState = () => {};
@@ -251,7 +251,7 @@ check(b.room!.status === 'playing', '두 명이 남았는데 판이 끝남');
 send(d, { t: 'leave' });
 await until(() => b.room?.status === 'over', '기권 처리');
 check(b.room!.game!.winner === b.room!.me, '혼자 남았는데 내가 이기지 않음');
-check((await me(cookieB)).guestPlayed === 2, '기권 판이 기록되지 않음');
+check((await me(cookieB)).records === null, '게스트에게 전적이 내려감');
 
 b.ws.close();
 // 7-1. 채팅은 서버에 보관된다(운영자만 볼 수 있다)
@@ -267,7 +267,7 @@ check(stored.some((m) => m.name === '비' && m.text === '안녕 ♥♥ (번호)'
 const purged = (await (await fetch(`${base}/api/admin/purge-chat`, { method: 'POST', headers: admin })).json()) as { deleted: number };
 check(purged.deleted === 0, `방금 쓴 채팅이 지워짐: ${purged.deleted}`);
 
-// 7-2. 회원가입: 게스트(비)가 이메일로 가입하면 회원이 되고, 게스트 때의 전적이 그대로 옮겨진다
+// 7-2. 회원가입: 게스트(비)가 이메일로 가입하면 회원이 된다. 게스트 때의 판은 전적으로 남지 않는다(참가 표시만 남는다)
 async function authPost(path: string, body: unknown, cookie = ''): Promise<{ ok: boolean; status: number; cookie: string; text: string }> {
   const res = await fetch(`${base}/api/auth/${path}`, {
     method: 'POST',
@@ -291,9 +291,7 @@ check(signedUp.ok, `회원가입 실패: ${signedUp.status} ${signedUp.text}`);
 await markAsTest(signedUp.cookie);
 const member = await me(signedUp.cookie);
 check(member.user?.isAnonymous === false && member.user.id !== guestB.id, `가입 후에도 게스트임: ${JSON.stringify(member.user)}`);
-check(member.records?.played === 2, `게스트 때의 전적이 옮겨지지 않음: ${member.records?.played}`);
-// 가입하고 나면 전적이 보이고, 방금 기권으로 이긴 판이 맨 위에 있다
-check(member.records?.recent[0]?.reason === 'forfeit' && member.records.recent[0].won === true && !!member.records.recent[1]?.opponents.includes('에이'), `가입 후 전적 내용이 다름: ${JSON.stringify(member.records?.recent.slice(0, 2))}`);
+check(member.records?.played === 0 && member.records.recent.length === 0, `게스트 때의 판이 전적으로 보임: ${JSON.stringify(member.records)}`);
 check((await authPost('sign-up/email', { name: '또', email, password }, '')).ok === false, '같은 이메일로 두 번 가입됨');
 
 // 7-3. 로그인: 틀린 비밀번호는 거절, 맞으면 같은 계정으로 들어간다
@@ -565,7 +563,10 @@ try {
   const idA = (await me(cookieA)).user!.id;
   const monthBefore = (trend as unknown as { unique: { month: { all: number } } }).unique.month.all;
   await asAdmin(`users/${idA}/test`, { method: 'POST', body: '{"test":false}' });
-  const monthAfter = ((await (await asAdmin('trends')).json()) as { unique: { month: { all: number } } }).unique.month.all;
+  const unmarked = (await (await asAdmin('trends')).json()) as { unique: { month: { all: number } }; recent: { players: string }[] };
+  const monthAfter = unmarked.unique.month.all;
+  // 게스트의 판은 이름·승패 없이 참가 표시만 남는다: 방금 한 4인 판이 '게스트' 넷으로만 보여야 한다
+  check(unmarked.recent.some((m) => m.players === '게스트, 게스트, 게스트, 게스트') && !unmarked.recent.some((m) => m.players.includes('에이')), `게스트의 이름이나 승패가 저장됨: ${JSON.stringify(unmarked.recent.slice(0, 3))}`);
   await asAdmin(`users/${idA}/test`, { method: 'POST', body: '{"test":true}' });
   check(monthAfter === monthBefore + 1, `점검용 표시를 풀어도 인원이 그대로임: ${monthBefore} → ${monthAfter}`);
   const engagement = (trend as unknown as { engagement: { gamesPerPlayer: number; nextDay: { base: number; back: number } } }).engagement;

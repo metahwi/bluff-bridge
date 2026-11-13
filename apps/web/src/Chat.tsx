@@ -68,7 +68,6 @@ export function Chat({
           </button>
         ))}
       </div>
-      <small className="chatNote">{work ? '메모는 7일간 보관됩니다.' : '채팅은 신고 확인을 위해 7일간 보관돼요.'}</small>
       {presetsOnly ? (
         <small>{work ? '자동 배정에서는 정해진 문구만 남길 수 있습니다.' : '빠른 매칭에서는 정해진 말만 보낼 수 있어요.'}</small>
       ) : (

@@ -5,6 +5,8 @@ export const RECORD_ALTERS = [
   'ALTER TABLE matches ADD COLUMN mode TEXT',
   // 판이 걸린 시간(밀리초). 기록하기 전의 판은 비어 있다.
   'ALTER TABLE matches ADD COLUMN duration_ms INTEGER',
+  // 게스트의 참가 표시(1). 이 줄에는 이름·승패를 넣지 않고, 회원의 전적에도 세지 않는다.
+  'ALTER TABLE match_players ADD COLUMN guest INTEGER',
 ];
 /** 종류를 기록하기 전의 판에 알 수 있는 만큼 종류를 채운다(여러 번 실행해도 된다). */
 export const RECORD_BACKFILL = [
@@ -45,16 +47,21 @@ export interface MatchRecord {
   mode?: string;
   /** 시작부터 끝까지 걸린 시간(밀리초). */
   durationMs?: number;
-  players: { userId: string; name: string; finished: number; lost: number; won: boolean }[];
+  players: { userId: string; guest?: boolean; name: string; finished: number; lost: number; won: boolean }[];
 }
+
+/** 게스트의 참가 표시에 이름 대신 넣는 글. */
+export const GUEST_NAME = '게스트';
 
 /** 판 결과를 저장하고 그 판의 id를 돌려준다. */
 export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<string> {
   const id = crypto.randomUUID();
+  // 게스트는 전적을 남기지 않는다: 이름·완주·먹힘·승패를 비우고 "이 계정이 이 판에 참가했다"만 적는다.
+  // 이 표시는 플레이한 사람 수(DAU)와 재방문율을 세는 데만 쓴다.
   const players = rec.players.map((p, seat) =>
     db
-      .prepare('INSERT INTO match_players (match_id, user_id, seat, name, finished, lost, won) VALUES (?, ?, ?, ?, ?, ?, ?)')
-      .bind(id, p.userId, seat, p.name, p.finished, p.lost, p.won ? 1 : 0),
+      .prepare('INSERT INTO match_players (match_id, user_id, seat, name, finished, lost, won, guest) VALUES (?, ?, ?, ?, ?, ?, ?, ?)')
+      .bind(id, p.userId, seat, p.guest ? GUEST_NAME : p.name, p.guest ? 0 : p.finished, p.guest ? 0 : p.lost, p.guest ? 0 : p.won ? 1 : 0, p.guest ? 1 : 0),
   );
   try {
     await db.batch([
@@ -65,8 +72,9 @@ export async function saveMatch(db: D1Database, rec: MatchRecord): Promise<strin
     ]);
     return id;
   } catch {
-    // 배포 직후 아직 새 열(mode, duration_ms)이 없는 잠깐 동안에도 판 기록은 남긴다.
+    // 배포 직후 아직 새 열이 없는 잠깐 동안에는 판 자체만 남긴다(게스트의 전적이 섞여 들어가지 않게 참가자 줄은 회원만).
   }
+  rec = { ...rec, players: rec.players.filter((p) => !p.guest) };
   await db.batch([
     db
       .prepare('INSERT INTO matches (id, room_code, player_count, rounds, reason, ended_at) VALUES (?, ?, ?, ?, ?, ?)')
@@ -96,9 +104,10 @@ export interface RecentMatch {
 }
 
 export async function getRecords(db: D1Database, userId: string) {
+  // 게스트 때의 참가 표시(guest = 1)는 전적이 아니므로 세지 않는다.
   const [stats, recent] = await db.batch<Record<string, unknown>>([
     db
-      .prepare('SELECT COUNT(*) AS played, COALESCE(SUM(won), 0) AS won FROM match_players WHERE user_id = ?')
+      .prepare('SELECT COUNT(*) AS played, COALESCE(SUM(won), 0) AS won FROM match_players WHERE user_id = ? AND COALESCE(guest, 0) = 0')
       .bind(userId),
     db
       .prepare(
@@ -106,7 +115,7 @@ export async function getRecords(db: D1Database, userId: string) {
                 (SELECT group_concat(o.name, ', ') FROM match_players o
                   WHERE o.match_id = m.id AND o.seat != mp.seat) AS opponents
            FROM match_players mp JOIN matches m ON m.id = mp.match_id
-          WHERE mp.user_id = ?
+          WHERE mp.user_id = ? AND COALESCE(mp.guest, 0) = 0
           ORDER BY m.ended_at DESC LIMIT 20`,
       )
       .bind(userId),

@@ -33,6 +33,8 @@ interface Seat {
   rematch: boolean;
   /** 접속이 끊긴 시각. 접속 중이면 null. */
   offlineSince: number | null;
+  /** 가입하지 않은 사람. 게스트의 전적(이름·승패)은 저장하지 않고, 판에 참가했다는 표시만 남긴다. */
+  guest?: boolean;
   /**
    * 이번 판에서 기권했다(나갔거나 접속이 끊겼다). 판이 계속되는 동안에는 자리 번호가
    * game.players의 번호와 같아야 해서 자리를 지우지 않고 이 표시만 해 둔다.
@@ -243,6 +245,7 @@ export class GameRoom extends DurableObject<Env> {
             : 'elimination',
         players: state.players.map((p, i) => ({
           userId: room.seats[i]!.pid,
+          guest: !!room.seats[i]!.guest,
           name: p.name,
           finished: p.finished,
           lost: p.lost,
@@ -385,7 +388,7 @@ export class GameRoom extends DurableObject<Env> {
         if (room.status !== 'lobby') return reject('이미 게임이 진행 중인 방이에요.');
         if (room.seats.length >= MAX_SEATS) return reject('방이 가득 찼어요.');
         if (room.reserved && !room.reserved.includes(pid)) return reject('매칭된 사람만 들어올 수 있는 방이에요.');
-        seat = { pid, name, ready: false, rematch: false, offlineSince: null };
+        seat = { pid, name, ready: false, rematch: false, offlineSince: null, guest: url.searchParams.get('guest') === '1' };
         room.seats.push(seat);
         // 봇 방: 사람이 들어오면 봇이 맞은편에 앉는다.
         if (room.bot && !room.seats.some((s) => s.bot)) {

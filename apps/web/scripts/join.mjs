@@ -37,7 +37,7 @@ await b.getByRole('button', { name: '나가기', exact: true }).first().click();
 await b.getByRole('dialog').getByRole('button', { name: '나가기', exact: true }).click();
 
 // 이긴 게스트의 결과 화면에 가입 권유가 뜬다
-const nudge = a.getByRole('button', { name: '가입하고 전적 남기기' });
+const nudge = a.getByRole('button', { name: '가입하고 전적 쌓기' });
 await nudge.waitFor({ timeout: 20000 });
 await a.waitForTimeout(1800);
 await nudge.scrollIntoViewIfNeeded();
@@ -51,15 +51,14 @@ await a.waitForTimeout(900);
 await shot(a, 'signup-open');
 console.log('잠긴 전적 안내:', (await a.locator('.lockNote p').innerText()).replace(/\s+/g, ' '));
 
-// 가입하면 방금 한 판이 전적에 보인다
+// 가입하면 회원이 되고, 게스트 때의 판은 전적에 없다(다음 판부터 쌓인다)
 await a.getByLabel('이메일').fill(`join-${Math.random().toString(36).slice(2)}@example.com`);
 await a.getByLabel('비밀번호 (8자 이상)').fill('hippo-bridge-1234');
 await a.getByLabel('만 14세 이상이에요.').check();
 await a.getByRole('checkbox').nth(1).check();
 await a.getByRole('button', { name: '가입하기', exact: true }).click();
 await a.getByText('수달 님으로 로그인됨').waitFor();
-await a.getByText(/전적 1전 1승 0패/).waitFor();
-await a.getByText(/전적 1전 1승 0패/).scrollIntoViewIfNeeded();
-await shot(a, 'member-records');
-console.log('가입 후 전적이 보임');
+await a.waitForTimeout(800);
+console.log('가입 후: 잠긴 전적 칸', (await a.locator('.records.locked').count()) === 0 ? '없음' : '남아 있음', '· 전적 칸', (await a.getByText(/^전적 \d+전/).count()) === 0 ? '없음(아직 0판)' : '있음');
+await shot(a, 'member-home', true);
 await browser.close();
