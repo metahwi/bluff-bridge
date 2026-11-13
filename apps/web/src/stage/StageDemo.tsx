@@ -26,7 +26,7 @@ const BASE: StageState = {
 };
 
 /** 연출별로, 먹히기 직전에 두 말이 서 있던 칸. 먹히는 쪽은 항상 0번(주황). */
-const SCENES: Record<string, [number, number]> = { left: [1, 6], chomp: [4, 8], right: [8, 2], near: [4, 5], kick: [0, 1], rope: [0, 6] };
+const SCENES: Record<string, [number, number]> = { left: [1, 6], chomp: [4, 8], right: [8, 2], near: [4, 5], kick: [0, 1], rope: [0, 6], revoke: [-1, 6], revokekick: [-1, 0] };
 
 /** 결과 화면에 넣을 가짜 판. */
 function finishedGame() {
@@ -49,6 +49,16 @@ export function StageDemo({ mode }: { mode: string }) {
 
   function scene(name: string) {
     const [a, b] = SCENES[name] ?? SCENES.chomp!;
+    if (a < 0) {
+      // 완주 취소: 0번은 굴릴 말이 없고 완주한 말만 둘 있다. 그중 하나가 도착 쪽에서 끌려간다.
+      const crowd = (finished: number) => [{ reserve: 0, finished }, BASE.crowd[1]!];
+      setState({ ...BASE, pawns: [null, b], crowd: crowd(2), active: 1 });
+      setTimeout(() => {
+        setCue({ id: name === 'revoke' ? 1 : 3, fallen: 0, other: 1, claim: 4, die: 4, truth: true, victimName: '에이', revoked: true });
+        setState({ ...BASE, pawns: [null, b], crowd: crowd(1), active: 1 });
+      }, 100);
+      return;
+    }
     setState({ ...BASE, pawns: [a, b] });
     setTimeout(() => {
       setCue({ id: Date.now(), fallen: 0, other: 1, claim: 4, die: 2, truth: false, victimName: '에이' });

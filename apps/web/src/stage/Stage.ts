@@ -23,6 +23,11 @@ export interface ChompInfo {
   fallen: number;
   /** 같이 긴장하는 상대(의심한 사람 또는 굴린 사람). */
   other: number | null;
+  /**
+   * 굴릴 말이 없는 사람이 완주한 말을 대신 잃는 경우. 도착 쪽 언덕에서 좋아하던 말 하나가
+   * 강으로 끌려간다(출발 쪽 장면을 좌우로 뒤집은 것).
+   */
+  revoked?: boolean;
   /** 장면을 고르는 데 쓰는 번호. 같은 판을 보는 사람끼리 같은 값이어야 같은 장면이 나온다. */
   seed?: number;
 }
@@ -663,9 +668,21 @@ export class Stage {
     this.bone.visible = false;
     const other = info.other !== null ? this.pawns[info.other] : undefined;
 
-    const onLand = !victim.pos || victim.pos < 1;
+    const revoked = !!info.revoked && victim.pos === null;
+    /** 말이 서 있던 언덕: -1 = 출발 쪽(왼쪽), +1 = 도착 쪽(오른쪽). 육지 장면은 이 값으로 좌우를 뒤집는다. */
+    const side = revoked ? 1 : -1;
+    const onLand = revoked || !victim.pos || victim.pos < 1;
     const plankNo = onLand ? 0 : Math.min(victim.pos!, state.length);
-    const stand = this.spot(info.fallen, plankNo, state.length);
+    let stand = this.spot(info.fallen, plankNo, state.length);
+    if (revoked) {
+      // 도착 쪽에 줄 서 있던 완주 말 가운데 마지막 하나가 끌려간다. 그 자리의 말은 숨기고 같은 자리에 연기할 말을 세운다.
+      const last = Math.max(0, (state.crowd[info.fallen]?.finished ?? 1) - 1);
+      stand = this.campSpot(info.fallen, last, 1);
+      for (const m of this.crowdGroup.children) {
+        if (m.userData.happy && Math.abs(m.position.x - stand.x) < 0.05 && Math.abs(m.position.z - stand.z) < 0.05) m.visible = false;
+      }
+      victim.group.children[0]!.scale.setScalar(CROWD_SIZE);
+    }
     victim.locked = true;
     if (other && other.pos !== null && !other.moving) {
       // 상대 말도 연출 동안 붙잡아 둔다(같이 떨고, 올가미를 던진다)
@@ -709,7 +726,7 @@ export class Stage {
 
     // 2. 공개
     this.at(1.15, () => this.onPhase('reveal'));
-    this.moveCamera(1.2, 0.55, { x: HX * 0.9 + (onLand ? -0.9 : 0), y: 0.45, z: 1.5, zoom: onLand ? 1.5 : 1.65 });
+    this.moveCamera(1.2, 0.55, { x: HX * 0.9 + (onLand ? side * 0.9 : 0), y: 0.45, z: 1.5, zoom: onLand ? 1.5 : 1.65 });
 
     const T = 2.05;
     /**
@@ -759,7 +776,7 @@ export class Stage {
       this.at(T - 0.3, () => {
         this.onSfx('rope');
         rope.visible = loop.visible = true;
-        rival.group.rotation.y = -Math.PI / 2; // 출발 지점 쪽을 본다
+        rival.group.rotation.y = (side * Math.PI) / 2; // 끌어올 말이 있는 언덕 쪽을 본다
       });
       /** 말의 목 높이(말 자신의 좌표). 올가미는 항상 이 점에 걸려 있어야 한다. */
       const NECK = new THREE.Vector3(0, 0.6 * PAWN_SIZE, 0);
@@ -777,24 +794,24 @@ export class Stage {
       });
       // 끌려가는 길: 목이 걸린 채 땅 위를 질질 끌려 물가까지 간 뒤, 언덕에서 떨어져 하마 입으로.
       // 말의 자세를 먼저 정하고, 그 말의 실제 목 위치에 밧줄 끝을 묶는다(한 번에 계산해야 어긋나지 않는다).
-      const edge = new THREE.Vector3(-BRIDGE_HALF + 0.15, BANK_TOP, lerp(stand.z, mouth.z, 0.5));
+      const edge = new THREE.Vector3(side * (BRIDGE_HALF - 0.15), BANK_TOP, lerp(stand.z, mouth.z, 0.5));
       pull = (k) => {
         const g = victim.group;
         if (k < 0.4) {
           const q = (k / 0.4) ** 2;
           g.position.lerpVectors(stand, edge, q);
-          g.rotation.set(0, 0.35, -1.15 * Math.min(1, (k / 0.4) * 2.5)); // 머리가 당겨지는 쪽으로 넘어진다
+          g.rotation.set(0, 0.35, side * 1.15 * Math.min(1, (k / 0.4) * 2.5)); // 머리가 당겨지는 쪽으로 넘어진다
         } else {
           const q = (k - 0.4) / 0.6;
           g.position.lerpVectors(edge, mouth, q);
           g.position.y += Math.sin(q * Math.PI) * 0.7;
-          g.rotation.set(q * 4, 0.35, -1.15 - q * 1.6);
+          g.rotation.set(q * 4, 0.35, side * (1.15 + q * 1.6));
         }
         g.scale.setScalar(1);
         g.updateMatrixWorld(true);
         stretch(g.localToWorld(NECK.clone()));
         loop.quaternion.copy(g.quaternion).multiply(ring); // 고리가 목을 두른 방향으로 같이 기운다
-        rival.group.rotation.z = -0.45 * Math.sin(k * Math.PI); // 당기는 쪽은 몸을 뒤로 젖힌다
+        rival.group.rotation.z = side * 0.45 * Math.sin(k * Math.PI); // 당기는 쪽은 몸을 뒤로 젖힌다
       };
       this.at(T + flight, () => (rope.visible = loop.visible = false));
     } else if (onLand) {
@@ -804,10 +821,10 @@ export class Stage {
       body.scale.setScalar(PAWN_SIZE);
       kicker = new THREE.Group();
       kicker.add(body);
-      kicker.rotation.y = Math.PI / 2; // 강 쪽을 본다
+      kicker.rotation.y = (-side * Math.PI) / 2; // 강 쪽을 본다
       this.scene.add(kicker);
-      const k0 = new THREE.Vector3(X - 3.0, BANK_TOP, stand.z);
-      const k1 = new THREE.Vector3(X - 0.75, BANK_TOP, stand.z);
+      const k0 = new THREE.Vector3(X + side * 3.0, BANK_TOP, stand.z);
+      const k1 = new THREE.Vector3(X + side * 0.75, BANK_TOP, stand.z);
       kicker.position.copy(k0);
       const k = kicker;
       // 도움닫기 세 걸음
@@ -827,12 +844,12 @@ export class Stage {
       });
       // 발을 내지르며 몸이 앞으로 쏠렸다가 돌아온다
       this.tween(T - 0.04, 0.12, (q) => {
-        k.position.x = k1.x + 0.45 * q;
-        k.rotation.z = -0.5 * q;
+        k.position.x = k1.x - side * 0.45 * q;
+        k.rotation.z = side * 0.5 * q;
       }, easeOut);
       this.tween(T + 0.1, 0.25, (q) => {
-        k.position.x = k1.x + 0.45 * (1 - q);
-        k.rotation.z = -0.5 * (1 - q);
+        k.position.x = k1.x - side * 0.45 * (1 - q);
+        k.rotation.z = side * 0.5 * (1 - q);
       });
       // 찬 뒤에 좋아서 폴짝폴짝
       for (let n = 0; n < 4; n++) {

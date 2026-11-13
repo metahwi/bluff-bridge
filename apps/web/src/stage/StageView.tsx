@@ -98,7 +98,7 @@ export function StageView({
     played.current = cue.id;
     const s = stage.current;
     if (!s) return void done.current?.();
-    void s.playChomp({ fallen: cue.fallen, other: cue.other, seed: cue.id }).then(() => done.current?.());
+    void s.playChomp({ fallen: cue.fallen, other: cue.other, seed: cue.id, revoked: cue.revoked }).then(() => done.current?.());
   }, [cue]);
 
   useEffect(() => {
