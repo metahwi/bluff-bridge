@@ -24,7 +24,9 @@ export function Account({
   const user = me.user;
   const member = !!user && !user.isAnonymous;
   // 구글은 앱 속 브라우저(카카오톡 등)에서의 로그인을 막으므로, 거기서는 단추를 내놓지 않는다.
-  const providers = me.providers.filter((p) => !(p === 'google' && inKakaoTalk));
+  const providers = me.providers
+    .filter((p) => !(p === 'google' && inKakaoTalk))
+    .sort((a, b) => Number(b === 'kakao') - Number(a === 'kakao')); // 카카오를 맨 위에
   const [mode, setMode] = useState<'closed' | 'login' | 'signup' | 'leave'>('closed');
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
