@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { NAME_MAX } from '@bluff-bridge/protocol/types';
 import { authClient, deleteAccount, emailSignIn, emailSignUp, socialLogin } from './auth.ts';
 import type { Me } from './auth.ts';
@@ -9,7 +9,18 @@ const PROVIDER_LABEL: Record<string, string> = { google: 'Google로 계속하기
  * 첫 화면의 계정 칸. 게스트는 여기서 가입하거나 로그인하고(게스트 때의 전적은 계정으로 옮겨진다),
  * 회원은 로그아웃하거나 탈퇴한다.
  */
-export function Account({ me, draftName, reload }: { me: Me; draftName: string; reload: () => Promise<unknown> }) {
+export function Account({
+  me,
+  draftName,
+  reload,
+  intent,
+}: {
+  me: Me;
+  draftName: string;
+  reload: () => Promise<unknown>;
+  /** 다른 곳의 '가입하기' 단추를 눌러 이 칸을 열라는 신호. n이 바뀔 때마다 그 양식을 열고 화면을 이리로 옮긴다. */
+  intent?: { mode: 'login' | 'signup'; n: number } | null;
+}) {
   const user = me.user;
   const member = !!user && !user.isAnonymous;
   const [mode, setMode] = useState<'closed' | 'login' | 'signup' | 'leave'>('closed');
@@ -27,6 +38,16 @@ export function Account({ me, draftName, reload }: { me: Me; draftName: string; 
     setPassword('');
     if (next === 'signup' && !name) setName(draftName || (user && user.name !== '손님' ? user.name : ''));
   }
+
+  const box = useRef<HTMLElement>(null);
+  useEffect(() => {
+    if (!intent) return;
+    open(intent.mode);
+    // 양식이 그려진 뒤에 그쪽으로 옮긴다.
+    requestAnimationFrame(() => box.current?.scrollIntoView({ behavior: 'smooth', block: 'center' }));
+    // intent가 바뀔 때만 반응한다.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [intent?.n]);
 
   async function run(task: () => Promise<void>) {
     setBusy(true);
@@ -87,11 +108,14 @@ export function Account({ me, draftName, reload }: { me: Me; draftName: string; 
   }
 
   return (
-    <section className="panel account">
-      <small>
-        가입하면 다른 기기에서도 전적이 유지되고 의견을 보낼 수 있어요.
-        {user ? ' 지금까지의 전적도 그대로 옮겨져요.' : ''} 가입하지 않아도 게임은 할 수 있어요.
-      </small>
+    <section className="panel account join" ref={box}>
+      <h2>가입하면 더 재미있어요</h2>
+      <ul className="perks">
+        <li>내 전적을 볼 수 있어요{me.guestPlayed ? ` (지금까지 한 ${me.guestPlayed}판도 그대로 옮겨져요)` : ''}</li>
+        <li>순위전에 나가 티어를 올리고 순위표에 이름을 올려요</li>
+        <li>휴대폰과 컴퓨터에서 같은 계정으로 이어서 해요</li>
+      </ul>
+      <small>가입하지 않아도 빠른 매칭과 친구 방은 할 수 있어요.</small>
       <div className="row tabs">
         <button className={mode === 'login' ? '' : 'ghost'} onClick={() => open('login')}>
           로그인

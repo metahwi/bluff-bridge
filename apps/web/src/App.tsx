@@ -37,8 +37,37 @@ function codeFromPath(): string {
   return ROOM_CODE.test(code) ? code : '';
 }
 
-function Records({ me }: { me: Me }) {
+/** 전적은 회원에게만 보인다. 게스트에게는 잠긴 칸과 가입 단추를 보여 준다. */
+function Records({ me, onJoin }: { me: Me; onJoin: (mode: 'login' | 'signup') => void }) {
   const r = me.records;
+  if (!me.user || me.user.isAnonymous) {
+    return (
+      <section className="panel records locked">
+        <h2>내 전적</h2>
+        <ul aria-hidden="true">
+          {['승', '패', '승'].map((w, i) => (
+            <li key={i}>
+              <b className={w === '승' ? 'win' : 'loss'}>{w}</b>
+              <span>vs ●●●●</span>
+              <small>●●턴 · ●●</small>
+            </li>
+          ))}
+        </ul>
+        <div className="lockNote">
+          <p>
+            <b>전적은 가입한 사람만 볼 수 있어요.</b>
+            {me.guestPlayed ? ` 지금까지 한 ${me.guestPlayed}판이 저장돼 있고, 가입하면 그대로 옮겨져요.` : ' 가입하면 한 판 한 판이 여기에 쌓여요.'}
+          </p>
+          <div className="row">
+            <button onClick={() => onJoin('signup')}>회원가입하고 전적 보기</button>
+            <button className="ghost" onClick={() => onJoin('login')}>
+              로그인
+            </button>
+          </div>
+        </div>
+      </section>
+    );
+  }
   if (!r || r.played === 0) return null;
   return (
     <section className="panel records">
@@ -72,6 +101,9 @@ export function App() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState('');
   const [cookieBlocked, setCookieBlocked] = useState(false);
+  /** 가입·로그인 양식을 열라는 신호(다른 칸의 '가입하기' 단추에서 온다). */
+  const [authIntent, setAuthIntent] = useState<{ mode: 'login' | 'signup'; n: number } | null>(null);
+  const join = (mode: 'login' | 'signup') => setAuthIntent((prev) => ({ mode, n: (prev?.n ?? 0) + 1 }));
   const work = useWork();
 
   // 방 밖(첫 화면, 매칭 대기)에서는 마을 곡을 튼다.
@@ -183,10 +215,13 @@ export function App() {
       <Room
         code={code}
         userId={user.id}
+        guest={user.isAnonymous}
         onExit={(next) => {
           go('');
           // 순위전 결과 화면의 '다시 매칭': 방을 나와 곧바로 순위전 줄에 다시 선다.
           if (next === 'ranked') setMatching('ranked');
+          // 결과 화면의 '가입하고 전적 남기기': 첫 화면으로 돌아와 가입 양식을 연다.
+          if (next === 'signup') join('signup');
         }}
       />
     );
@@ -252,7 +287,13 @@ export function App() {
           <button className="rankedBtn" disabled={busy || !draft.trim() || !member} onClick={() => withName(() => setMatching('ranked'))}>
             순위전 <span className="badge">1대1</span>
           </button>
-          {member && me.rank ? <MyRank rank={me.rank} /> : <small className="hint">가입하고 로그인하면 순위전을 할 수 있어요.</small>}
+          {member && me.rank ? (
+            <MyRank rank={me.rank} />
+          ) : (
+            <button className="linkish hint" onClick={() => join('signup')}>
+              순위전은 가입한 사람만 할 수 있어요. 가입하러 가기
+            </button>
+          )}
           <button className="ghost" disabled={busy || !draft.trim()} onClick={createRoom}>
             친구와 하기 (방 만들기)
           </button>
@@ -286,6 +327,9 @@ export function App() {
 
       </section>
 
+      {/* 가입하지 않은 사람에게는 가입 칸을 게임 방법보다 위에 둔다 */}
+      {!member && <Account me={me} draftName={draft.trim()} reload={reload} intent={authIntent} />}
+
       <section className="panel rules">
         <h2>게임 방법</h2>
         <ol>
@@ -302,11 +346,11 @@ export function App() {
         </ol>
       </section>
 
-      <Account me={me} draftName={draft.trim()} reload={reload} />
+      {member && <Account me={me} draftName={draft.trim()} reload={reload} />}
 
       <Leaderboard myPlace={me.rank?.place ?? null} />
 
-      <Records me={me} />
+      <Records me={me} onJoin={join} />
 
       <footer className="links">
         <a href="/terms">이용약관</a>

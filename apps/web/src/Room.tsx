@@ -237,7 +237,18 @@ function Actions({
   return null;
 }
 
-export function Room({ code, userId, onExit }: { code: string; userId: string; onExit: (next?: 'ranked') => void }) {
+export function Room({
+  code,
+  userId,
+  guest = false,
+  onExit,
+}: {
+  code: string;
+  userId: string;
+  /** 가입하지 않은 사람인지. 결과 화면에서 가입을 권한다. */
+  guest?: boolean;
+  onExit: (next?: 'ranked' | 'signup') => void;
+}) {
   const { room, deadline, conn, error, fatal, chat, send } = useRoom(code, userId);
   const chatOn = useChat();
   /** 무대에서 재생 중인 추락 연출. 끝날 때까지 조작을 막는다. */
@@ -492,6 +503,14 @@ export function Room({ code, userId, onExit }: { code: string; userId: string; o
                   : forfeiter === room.me
                     ? '내가 기권해서 패배로 기록됐어요.'
                     : `${game.players[forfeiter]?.name} 님이 기권했어요.`
+              }
+              onSignup={
+                guest
+                  ? () => {
+                      send({ t: 'leave' });
+                      onExit('signup');
+                    }
+                  : undefined
               }
               onRematch={() => (room.ranked ? again() : send({ t: 'rematch' }))}
               onLeave={leave}

@@ -181,6 +181,21 @@ export function WorkHome(p: WorkHomeProps) {
               ))}
             </>
           )}
+          {!member && (
+            <>
+              <tr>
+                <th>{row++}</th>
+                <td colSpan={3} />
+              </tr>
+              <tr>
+                <th>{row++}</th>
+                <td className="head">최근 실적</td>
+                <td colSpan={2} className="note">
+                  회원만 볼 수 있습니다.{p.me.guestPlayed ? ` 지금까지의 ${p.me.guestPlayed}건은 가입하면 그대로 옮겨집니다.` : ''} 가입은 옵션에서 업무 모드를 끈 첫 화면에서 할 수 있습니다.
+                </td>
+              </tr>
+            </>
+          )}
           {r && r.played > 0 && (
             <>
               <tr>

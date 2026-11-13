@@ -39,6 +39,7 @@ export function Result({
   note,
   ranked = false,
   rank = null,
+  onSignup,
   waiting,
   onRematch,
   onLeave,
@@ -51,6 +52,8 @@ export function Result({
   ranked?: boolean;
   /** 순위전에서 내 점수가 어떻게 바뀌었는지. */
   rank?: RankChange | null;
+  /** 게스트일 때만 넘긴다: 누르면 방을 나가 가입 화면으로 간다. */
+  onSignup?: () => void;
   /** 내가 이미 다시 하기를 눌렀는지. */
   waiting: boolean;
   onRematch: () => void;
@@ -132,6 +135,14 @@ export function Result({
           나가기
         </button>
       </div>
+      {onSignup && (
+        <p className="joinNudge">
+          가입하면 방금 한 판을 포함해 내 전적을 볼 수 있고, 순위전에도 나갈 수 있어요.
+          <button className="small" onClick={onSignup}>
+            가입하고 전적 남기기
+          </button>
+        </p>
+      )}
     </div>
   );
 }

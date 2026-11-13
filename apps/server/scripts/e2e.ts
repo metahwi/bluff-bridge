@@ -57,6 +57,8 @@ async function markAsTest(cookie: string): Promise<void> {
 interface MeResponse {
   user: { id: string; name: string; isAnonymous: boolean } | null;
   records: { played: number; won: number; recent: { won: boolean; opponents: string; reason: string }[] } | null;
+  /** 게스트로 한 판 수. 전적 자체는 회원에게만 온다. */
+  guestPlayed?: number;
 }
 const me = async (cookie: string) =>
   (await (await fetch(`${base}/api/me`, { headers: { Cookie: cookie } })).json()) as MeResponse;
@@ -228,10 +230,10 @@ console.log('판 기록:', JSON.stringify(stats));
 
 // 5-1. 전적이 모두에게 기록된다
 const winnerIsA = g.winner === a.room!.me;
-const [recA, recB] = [(await me(cookieA)).records!, (await me(cookieB)).records!];
-check(recA.played === 1 && recB.played === 1, `전적 판 수가 다름: ${recA.played}, ${recB.played}`);
-check(recA.won === (winnerIsA ? 1 : 0), '전적의 승패가 실제 결과와 다름');
-check(!!recA.recent[0]?.opponents.includes('비') && !!recB.recent[0]?.opponents.includes('에이'), `전적의 상대 이름이 다름: ${recA.recent[0]?.opponents}`);
+// 전적은 회원에게만 보인다. 게스트에게는 몇 판 했는지만 온다(기록은 남아 있다가 가입하면 옮겨진다).
+const [meA, meB] = [await me(cookieA), await me(cookieB)];
+check(meA.records === null && meB.records === null, '게스트에게 전적이 내려감');
+check(meA.guestPlayed === 1 && meB.guestPlayed === 1, `게스트의 판 수가 다름: ${meA.guestPlayed}, ${meB.guestPlayed}`);
 
 // 6. 다시 하기: 모두 눌러야 시작한다
 for (const x of all) x.onState = () => {};
@@ -249,8 +251,7 @@ check(b.room!.status === 'playing', '두 명이 남았는데 판이 끝남');
 send(d, { t: 'leave' });
 await until(() => b.room?.status === 'over', '기권 처리');
 check(b.room!.game!.winner === b.room!.me, '혼자 남았는데 내가 이기지 않음');
-const afterForfeit = (await me(cookieB)).records!;
-check(afterForfeit.played === 2 && afterForfeit.recent[0]?.reason === 'forfeit' && afterForfeit.recent[0].won, '기권 판이 전적에 기록되지 않음');
+check((await me(cookieB)).guestPlayed === 2, '기권 판이 기록되지 않음');
 
 b.ws.close();
 // 7-1. 채팅은 서버에 보관된다(운영자만 볼 수 있다)
@@ -291,6 +292,8 @@ await markAsTest(signedUp.cookie);
 const member = await me(signedUp.cookie);
 check(member.user?.isAnonymous === false && member.user.id !== guestB.id, `가입 후에도 게스트임: ${JSON.stringify(member.user)}`);
 check(member.records?.played === 2, `게스트 때의 전적이 옮겨지지 않음: ${member.records?.played}`);
+// 가입하고 나면 전적이 보이고, 방금 기권으로 이긴 판이 맨 위에 있다
+check(member.records?.recent[0]?.reason === 'forfeit' && member.records.recent[0].won === true && !!member.records.recent[1]?.opponents.includes('에이'), `가입 후 전적 내용이 다름: ${JSON.stringify(member.records?.recent.slice(0, 2))}`);
 check((await authPost('sign-up/email', { name: '또', email, password }, '')).ok === false, '같은 이메일로 두 번 가입됨');
 
 // 7-3. 로그인: 틀린 비밀번호는 거절, 맞으면 같은 계정으로 들어간다

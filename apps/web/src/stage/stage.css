@@ -349,3 +349,13 @@ button.rankedBtn .badge { background: var(--ink); }
 .ranking li.me { background: #fff6cf; box-shadow: -6px 0 0 #fff6cf, 6px 0 0 #fff6cf; }
 /* 관리자가 올린 공지 */
 .homeNotice { text-align: center; border-color: var(--ink); background: #fff6cf; color: var(--ink); white-space: pre-wrap; }
+
+/* ── 가입 유도 ── */
+.account.join h2 { font-size: 20px; }
+.account.join .perks { margin: 0; padding-left: 20px; display: flex; flex-direction: column; gap: 4px; font-size: 14px; }
+.records.locked { position: relative; }
+.records.locked ul { filter: blur(3px); opacity: 0.55; user-select: none; }
+.lockNote { display: flex; flex-direction: column; gap: 8px; margin-top: 4px; padding: 10px 12px; background: #fff6cf; border: 3px solid var(--ink); text-align: center; }
+.lockNote .row button { flex: 1 1 auto; }
+.joinNudge { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 6px 10px; max-width: 620px; padding: 8px 12px; background: #fff6cf; border: 3px solid var(--ink); font-size: 14px; color: var(--ink); }
+button.linkish.hint { align-self: center; }.panel.form button.linkish.hint { font-size: 12px; line-height: 1.5; }
