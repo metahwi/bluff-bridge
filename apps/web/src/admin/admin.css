@@ -107,3 +107,26 @@ main.adm.wide { max-width: 1320px; }
 .admCard b small { display: inline; margin-left: 2px; font-size: 14px; font-weight: 400; color: #656d76; }
 .admTag.warn { background: #fff2cc; color: #7a5b00; }
 .admBtns { display: inline-flex; gap: 6px; }
+
+/* ── 채팅: 방별 대화 ── */
+.admRooms { display: grid; gap: 12px; margin-top: 10px; }
+.admRoom { border: 1px solid #d8dde3; border-radius: 8px; overflow: hidden; }
+.admRoom > header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px; padding: 9px 12px; background: #f6f7f9; border: 0; border-bottom: 1px solid #e6e9ed; border-radius: 0; box-shadow: none; justify-content: flex-start; }
+.admRoom > header .who { flex: 1 1 200px; min-width: 0; overflow-wrap: anywhere; }
+.admRoom > header small { display: inline; }
+.admThread { list-style: none; margin: 0; padding: 6px 12px 8px; max-height: 320px; overflow-y: auto; }
+.admThread li { display: grid; grid-template-columns: 76px minmax(60px, max-content) minmax(0, 1fr) auto; align-items: baseline; gap: 0 10px; padding: 3px 0; }
+.admThread time { white-space: nowrap; font-size: 12px; color: #8a8f98; font-variant-numeric: tabular-nums; }
+.admThread b { max-width: 12em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.admThread .say { overflow-wrap: anywhere; }
+.admThread .say em { margin-left: 8px; font-style: normal; font-size: 11px; color: #8a8f98; }
+.admThread li.preset .say { color: #52514e; }
+.admThread li button { visibility: hidden; min-height: 24px; padding: 0 8px; font-size: 12px; }
+.admThread li:hover button, .admThread li:focus-within button { visibility: visible; }
+/* 그 방에서 판이 끝난 시점 */
+.admThread li.game { grid-template-columns: minmax(0, 1fr) auto; margin: 5px 0; padding: 4px 10px; background: #f0f7f2; border-radius: 6px; font-size: 12px; color: #14502f; }
+@media (max-width: 640px) {
+  .admThread li { grid-template-columns: 70px minmax(0, 1fr) auto; }
+  .admThread li .say { grid-column: 2 / -1; }
+  .admThread li button { visibility: visible; }
+}

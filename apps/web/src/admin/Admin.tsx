@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useState } from 'react';
 import type { FormEvent, ReactNode } from 'react';
 import { BirdsEye } from './BirdsEye.tsx';
+import { ChatRooms } from './ChatRooms.tsx';
 import { Forbidden, api, useLoad, when } from './api.ts';
 import './admin.css';
 
@@ -322,59 +323,6 @@ function Feedback({ onForbidden }: { onForbidden: () => void }) {
   );
 }
 
-interface ChatRow {
-  id: number;
-  room_code: string;
-  name: string;
-  text: string | null;
-  preset: number | null;
-  quick_match: number;
-  created_at: number;
-}
-
-function ChatLog({ onForbidden }: { onForbidden: () => void }) {
-  const [room, setRoom] = useState('');
-  const [query, setQuery] = useState('chat');
-  const { data, error, reload } = useLoad<{ chat: ChatRow[] }>(query, onForbidden);
-  async function remove(id: number) {
-    if (!confirm('이 채팅 기록을 지울까요?')) return;
-    await api(`chat/${id}`, { method: 'DELETE' }).catch((e) => e instanceof Forbidden && onForbidden());
-    reload();
-  }
-  return (
-    <>
-      <form
-        className="admSearch"
-        onSubmit={(e) => {
-          e.preventDefault();
-          setQuery(room.trim() ? `chat?room=${encodeURIComponent(room.trim())}` : 'chat');
-        }}
-      >
-        <input aria-label="방 코드" placeholder="방 코드 (비우면 최근 200줄)" value={room} onChange={(e) => setRoom(e.target.value)} />
-        <button>찾기</button>
-      </form>
-      {error && <p className="admError">{error}</p>}
-      {data && (
-        <Table
-          empty="보관 중인 채팅이 없어요."
-          head={['때', '방', '보낸 사람', '내용', '']}
-          rows={data.chat.map((m) => [
-            when(m.created_at),
-            <>
-              {m.room_code} {m.quick_match === 1 && <span className="admTag">매칭</span>}
-            </>,
-            m.name,
-            m.text ?? <span className="admMuted">(정해진 말 {m.preset}번)</span>,
-            <button className="admGhost" onClick={() => remove(m.id)}>
-              지우기
-            </button>,
-          ])}
-        />
-      )}
-    </>
-  );
-}
-
 /** 관리자가 한 일의 기록: 로그인(성공·실패), 설정 변경, 점수 수정, 삭제. */
 function ActivityLog({ onForbidden }: { onForbidden: () => void }) {
   const { data, error } = useLoad<{ log: { id: number; at: number; ip: string; action: string; detail: string }[] }>('log', onForbidden);
@@ -450,7 +398,7 @@ export default function Admin() {
         {tab === 'settings' && <Settings onForbidden={kick} />}
         {tab === 'users' && <Users onForbidden={kick} />}
         {tab === 'feedback' && <Feedback onForbidden={kick} />}
-        {tab === 'chat' && <ChatLog onForbidden={kick} />}
+        {tab === 'chat' && <ChatRooms onForbidden={kick} />}
         {tab === 'log' && <ActivityLog onForbidden={kick} />}
       </section>
     </main>

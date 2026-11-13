@@ -13,7 +13,7 @@ import { LIVE_TABLES, REAL_MATCH, REAL_USER, STAT_TABLES, liveRooms, markTest, m
 import { RANK_TABLES } from './ranking.ts';
 import { RECORD_ALTERS, RECORD_BACKFILL, RECORD_TABLES } from './records.ts';
 import { SETTINGS_TABLES, getSettings, saveSettings } from './settings.ts';
-import { CHAT_KEEP_DAYS, STORE_TABLES, purgeOldChat, recentChat, recentFeedback } from './store.ts';
+import { CHAT_KEEP_DAYS, STORE_TABLES, chatByRoom, purgeOldChat, recentChat, recentFeedback } from './store.ts';
 
 const COOKIE = 'hama_admin';
 const SESSION_MS = 12 * 60 * 60 * 1000;
@@ -289,6 +289,8 @@ admin.delete('/feedback/:id', async (c) => {
 });
 
 admin.get('/chat', async (c) => c.json({ chat: await recentChat(c.env.DB, c.req.query('room')?.trim().toUpperCase() || null) }));
+/** 채팅 탭: 방별로 묶은 대화. */
+admin.get('/chat/rooms', async (c) => c.json({ rooms: await chatByRoom(c.env.DB) }));
 admin.delete('/chat/:id', async (c) => {
   await c.env.DB.prepare('DELETE FROM chat_messages WHERE id = ?').bind(Number(c.req.param('id'))).run();
   await log(c.env, c.req.raw, '채팅 삭제', `#${c.req.param('id')}`);

@@ -108,3 +108,68 @@ export async function eraseUser(db: D1Database, userId: string): Promise<void> {
     db.prepare("UPDATE match_players SET user_id = 'deleted' WHERE user_id = ?").bind(userId),
   ]);
 }
+/** 관리자 페이지의 채팅 탭: 보관 중인 채팅을 방별로 묶은 대화. */
+export interface ChatRoom {
+  code: string;
+  /** 빠른 매칭·순위전 방(정해진 말만 오간다). */
+  quickMatch: boolean;
+  firstAt: number;
+  lastAt: number;
+  /** 직접 쓴 글의 수(정해진 말 제외). */
+  typed: number;
+  /** 말한 사람이 모두 점검용 계정인 방. */
+  testOnly: boolean;
+  people: string[];
+  /** 이 방에서 끝난 판(오래된 것부터). 대화가 어떤 판에서 나왔는지 가늠하는 데 쓴다. */
+  games: { endedAt: number; mode: string | null; rounds: number; reason: string; players: string }[];
+  messages: { id: number; at: number; name: string; text: string | null; preset: number | null; test: boolean }[];
+}
+
+/**
+ * 보관 중인 채팅(최근 limit줄)을 방별로 묶는다. 방 안에서는 시간순, 방끼리는 마지막으로 말이 오간 순서다.
+ */
+export async function chatByRoom(db: D1Database, limit = 3000): Promise<ChatRoom[]> {
+  const [chat, games] = await db.batch<Record<string, unknown>>([
+    db
+      .prepare(
+        `SELECT c.id, c.room_code AS code, c.name, c.text, c.preset, c.quick_match AS quick, c.created_at AS at,
+                EXISTS (SELECT 1 FROM test_users t WHERE t.user_id = c.user_id) AS test
+           FROM chat_messages c ORDER BY c.id DESC LIMIT ?`,
+      )
+      .bind(limit),
+    db.prepare(
+      `SELECT m.room_code AS code, m.ended_at AS endedAt, m.mode, m.rounds, m.reason,
+              (SELECT group_concat(CASE WHEN p.won = 1 THEN '★' ELSE '' END || p.name || CASE WHEN p.user_id LIKE 'bot-%' THEN ' [봇]' ELSE '' END, ', ')
+                 FROM match_players p WHERE p.match_id = m.id) AS players
+         FROM matches m WHERE m.room_code IN (SELECT DISTINCT room_code FROM chat_messages) ORDER BY m.ended_at`,
+    ),
+  ]);
+
+  const rooms = new Map<string, ChatRoom>();
+  // 최신 것부터 읽었으므로 거꾸로 돌려 시간순으로 넣는다.
+  for (const r of [...chat!.results].reverse()) {
+    const code = String(r.code);
+    let room = rooms.get(code);
+    if (!room) {
+      room = { code, quickMatch: Number(r.quick) === 1, firstAt: Number(r.at), lastAt: Number(r.at), typed: 0, testOnly: true, people: [], games: [], messages: [] };
+      rooms.set(code, room);
+    }
+    const name = String(r.name);
+    const test = Number(r.test) === 1;
+    room.lastAt = Number(r.at);
+    if (r.text !== null) room.typed++;
+    if (!test) room.testOnly = false;
+    if (!room.people.includes(name)) room.people.push(name);
+    room.messages.push({ id: Number(r.id), at: Number(r.at), name, text: r.text === null ? null : String(r.text), preset: r.preset === null ? null : Number(r.preset), test });
+  }
+  for (const g of games!.results) {
+    rooms.get(String(g.code))?.games.push({
+      endedAt: Number(g.endedAt),
+      mode: g.mode === null ? null : String(g.mode),
+      rounds: Number(g.rounds),
+      reason: String(g.reason),
+      players: String(g.players ?? ''),
+    });
+  }
+  return [...rooms.values()].sort((a, b) => b.lastAt - a.lastAt);
+}

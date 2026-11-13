@@ -3,6 +3,7 @@ import { createRoot } from 'react-dom/client';
 import { App } from './App.tsx';
 import { StageDemo } from './stage/StageDemo.tsx';
 import { Legal } from './Legal.tsx';
+import { sound } from './sound.ts';
 import 'galmuri/dist/galmuri.css';
 import './styles.css';
 import './stage/stage.css';
@@ -28,6 +29,9 @@ const legal = location.pathname === '/terms' ? 'terms' : location.pathname === '
 
 // 관리자 페이지(/admin). 게임을 하는 사람은 받지 않도록 따로 떼어 불러온다.
 const Admin = location.pathname.replace(/\/$/, '') === '/admin' ? lazy(() => import('./admin/Admin.tsx')) : null;
+
+// 관리자 페이지에서는 음악과 효과음을 내지 않는다.
+if (Admin) sound.setWorkMute(true);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
